@@ -7,6 +7,8 @@ import { formatDate } from '../util/DateUtil';
 import TextareaField from '../components/TextareaField';
 import FormField from '../util/FormField';
 import BaseForm from '../containers/BaseForm';
+import jsPDF from 'jsPDF';
+import html2canvas from 'html2canvas';
 
 export default class PdfViewer extends BaseForm {
   constructor(props) {
@@ -344,6 +346,37 @@ export default class PdfViewer extends BaseForm {
       });
   }
 
+  generatePdf = () => {
+    // var pdf = new jsPDF('p', 'pt', 'letter');
+    // pdf.addHTML(document.body, 0, 0, {}, function(){
+    //   pdf.save("test.pdf");
+    // });
+    // var canvas = pdf.canvas;
+    // canvas.width = 8.5 * 72;
+    // debugger;
+    // jsPDF.html2pdf(document.body, canvas, () => {pdf.save('Test.pdf');});
+    // var pdf = new jsPDF('p', 'pt', 'letter');
+    // var canvas = pdf.canvas;
+    // canvas.height = 72 * 11;
+    // canvas.width= 72 * 8.5;;
+    // // can also be document.body
+    // html2canvas(document.body, pdf, function(pdf) {
+    //   pdf.save('Test.pdf');
+    // });
+    // html2canvas(document.getElementById('page1'), {
+    //   onrendered: (canvas) => {
+    //     var imgData = canvas.toDataURL(
+    //         'image/png');              
+    //     var doc = new jsPDF('p', 'mm');
+    //     doc.addImage(imgData, 'PNG', 10, 10);
+    //     doc.save('sample-file.pdf');
+    //   }
+    // })
+    // var pdf = new jsPDF();
+    // pdf.canvas = document.getElementById('page1')
+    // pdf.save('Test.pdf');
+  }
+
   render() {
     let comments = [];
 
@@ -499,7 +532,7 @@ export default class PdfViewer extends BaseForm {
                   <Button name="download" classNames={["cf-pdf-button"]}>
                     <i className="cf-pdf-button fa fa-download" aria-hidden="true"></i>
                   </Button>
-                  <Button name="print" classNames={["cf-pdf-button"]}>
+                  <Button name="print" classNames={["cf-pdf-button"]} onClick={this.generatePdf}>
                     <i className="cf-pdf-button fa fa-print" aria-hidden="true"></i>
                   </Button>
                 </div>
