@@ -24,7 +24,7 @@ export default class TextField extends React.Component {
       </label>
       {errorMessage && <span className="usa-input-error-message">{errorMessage}</span>}
       <input
-        className="cf-form-textinput"
+        className="cf-form-textarea"
         name={name}
         id={name}
         onChange={this.onChange}
