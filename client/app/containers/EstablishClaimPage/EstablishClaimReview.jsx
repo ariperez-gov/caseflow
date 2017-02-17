@@ -53,13 +53,37 @@ const SPECIAL_ISSUE_NODE_MAP = {
 };
 
 export const UNHANDLED_SPECIAL_ISSUES = [
-  'Pension - United States',
-  'VAMC',
-  'DIC - death, or accrued benefits - United States',
-  'Education - GI Bill, dependents educational ' +
-    'assistance, scholarship, transfer of entitlement',
-  'Waiver of Overpayment',
-  'National Cemetery Administration'
+  {
+    specialIssue: 'Pension - United States',
+    stationOfJurisdiction: '351 - Muskogee, OK',
+    location: '50'
+  },
+  {
+    specialIssue: 'VAMC',
+    stationOfJurisdiction: '351 - Muskogee, OK',
+    location: '51'
+  },
+  {
+    specialIssue: 'DIC - death, or accrued benefits - United States',
+    stationOfJurisdiction: '351 - Muskogee, OK',
+    location: '50'
+  },
+  {
+    specialIssue: 'Education - GI Bill, dependents educational ' +
+      'assistance, scholarship, transfer of entitlement',
+    stationOfJurisdiction: '351 - Muskogee, OK',
+    location: '50'
+  },
+  {
+    specialIssue: 'Waiver of Overpayment',
+    stationOfJurisdiction: '351 - Muskogee, OK',
+    location: '50'
+  },
+  {
+    specialIssue: 'National Cemetery Administration',
+    stationOfJurisdiction: '351 - Muskogee, OK',
+    location: '53'
+  }
 ];
 
 export const ROUTING_SPECIAL_ISSUES = [

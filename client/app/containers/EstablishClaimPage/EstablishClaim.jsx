@@ -14,7 +14,7 @@ import dateValidator from '../../util/validators/DateValidator';
 import { formatDate } from '../../util/DateUtil';
 import EstablishClaimReview, * as Review from './EstablishClaimReview';
 import EstablishClaimForm from './EstablishClaimForm';
-import EstablishClaimNote from './EstablishClaimNote';
+import EstablishClaimNote, * as Note from './EstablishClaimNote';
 import AssociatePage from './EstablishClaimAssociateEP';
 
 import { createHashHistory } from 'history';
@@ -127,7 +127,7 @@ export default class EstablishClaim extends BaseForm {
 
     // Force navigate to the review page on initial component mount
     // This ensures they are not mid-flow
-    return DECISION_PAGE;
+    return NOTE_PAGE;
   }
 
   componentDidMount() {
@@ -322,10 +322,14 @@ export default class EstablishClaim extends BaseForm {
   handleReviewPageSubmit = () => {
     this.setStationState();
 
-    if (!this.validateReviewPageSubmit()) {
-      this.setState({
-        specialIssueModalDisplay: true
-      });
+    if (this.hasUnhandledIssues()) {
+      if (this.getClaimTypeFromDecision() === 'Full Grant'){
+        this.setState({
+          specialIssueModalDisplay: true
+        });
+      } else {
+        this.handlePageChange(NOTE_PAGE);
+      }
     } else if (this.shouldShowAssociatePage()) {
       this.handlePageChange(ASSOCIATE_PAGE);
     } else {
@@ -440,16 +444,16 @@ export default class EstablishClaim extends BaseForm {
     });
   }
 
-  validateReviewPageSubmit() {
-    let validOutput = true;
+  hasUnhandledIssues() {
+    let unhandledIssues = false;
 
     Review.UNHANDLED_SPECIAL_ISSUES.forEach((issue) => {
-      if (this.state.specialIssues[StringUtil.convertToCamelCase(issue)].value) {
-        validOutput = false;
+      if (this.state.specialIssues[StringUtil.convertToCamelCase(issue.specialIssue)].value) {
+        unhandledIssues = true;
       }
     });
 
-    return validOutput;
+    return unhandledIssues;
   }
 
   render() {
@@ -516,6 +520,7 @@ export default class EstablishClaim extends BaseForm {
             handleSubmit={this.handleNotePageSubmit}
             showNotePageAlert={this.state.showNotePageAlert}
             specialIssues={specialIssues}
+            typeOfNote={Note.VACOLS_NOTE}
           />
         }
 
