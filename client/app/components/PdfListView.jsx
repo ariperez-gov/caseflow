@@ -41,19 +41,23 @@ export default class PdfListView extends React.Component {
     let numberOfComments = this.props.annotationStorage
       .getAnnotationByDocumentId(doc.id).length;
 
-    return [
-      <div>
-        { doc.label && <i style={{ color: Labels.LABEL_COLOR_MAPPING[doc.label] }}
-        className="fa fa-bookmark cf-pdf-bookmarks"
-        aria-hidden="true"></i> }
-      </div>,
-      <span className="fa-stack fa-3x cf-pdf-comment-indicator">
-        <i className="fa fa-comment-o fa-stack-2x"></i>
-        <strong className="fa-stack-1x fa-stack-text">{numberOfComments}</strong>
-      </span>,
-      formatDate(doc.received_at),
-      doc.type,
-      <a onClick={this.props.showPdf(index)}>{doc.filename}</a>];
+    if ('comment' in doc) {
+      return [doc.comment];
+    } else {
+      return [
+        <div>
+          { doc.label && <i style={{ color: Labels.LABEL_COLOR_MAPPING[doc.label] }}
+          className="fa fa-bookmark cf-pdf-bookmarks"
+          aria-hidden="true"></i> }
+        </div>,
+        <span className="fa-stack fa-3x cf-pdf-comment-indicator">
+          <i className="fa fa-comment-o fa-stack-2x"></i>
+          <strong className="fa-stack-1x fa-stack-text">{numberOfComments}</strong>
+        </span>,
+        formatDate(doc.received_at),
+        doc.type,
+        <a onClick={this.props.showPdf(index)}>{doc.filename}</a>];
+    }
   }
 
   onFilter = (value) => {
@@ -61,6 +65,17 @@ export default class PdfListView extends React.Component {
   }
 
   render() {
+    let tableValues = [];
+
+    this.props.documents.forEach((doc) => {
+      tableValues.push(doc);
+      this.props.annotationStorage
+        .getAnnotationByDocumentId(doc.id).forEach((annotation) => {
+          tableValues.push({comment: annotation.comment})
+        });
+    });
+
+
     return <div className="usa-grid">
       <div className="cf-app">
         <div className="cf-app-segment cf-app-segment--alt">
@@ -87,7 +102,7 @@ export default class PdfListView extends React.Component {
             <Table
               headers={this.getDocumentTableHeaders()}
               buildRowValues={this.buildDocumentRow}
-              values={this.props.documents}
+              values={tableValues}
             />
           </div>
         </div>
