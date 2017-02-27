@@ -38,7 +38,7 @@ export default class Table extends React.Component {
         {values.map((object, j) =>
           <tr id={object.id || `table-row-${j}`} key={j}>
             {buildRowValues(object, j).map((value, k) =>
-              <td key={k} className={this.props.columnClasses[k] || ""}>{value}</td>
+              <td key={k} colSpan={value.colSpan} className={this.props.columnClasses[k] || ""}>{value.content || value}</td>
             )}
 
           </tr>

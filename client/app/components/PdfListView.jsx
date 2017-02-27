@@ -41,8 +41,14 @@ export default class PdfListView extends React.Component {
     let numberOfComments = this.props.annotationStorage
       .getAnnotationByDocumentId(doc.id).length;
 
-    if ('comment' in doc) {
-      return [doc.comment];
+    if ('comments' in doc) {
+      let comments = doc.comments.map((comment, i) => {
+          return <div key={`comment${i}-${index}`} className="cf-pdf-comment-list-item">{comment.comment}</div>;
+        });
+      return [
+        {content: 'Comments', colSpan: 2},
+        {content: comments, colSpan: 3}
+      ];
     } else {
       return [
         <div>
@@ -69,10 +75,8 @@ export default class PdfListView extends React.Component {
 
     this.props.documents.forEach((doc) => {
       tableValues.push(doc);
-      this.props.annotationStorage
-        .getAnnotationByDocumentId(doc.id).forEach((annotation) => {
-          tableValues.push({comment: annotation.comment})
-        });
+      tableValues.push({comments: this.props.annotationStorage
+        .getAnnotationByDocumentId(doc.id)});
     });
 
 
