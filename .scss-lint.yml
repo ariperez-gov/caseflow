@@ -44,7 +44,7 @@ linters:
     enabled: true
   ImportantRule:
     enabled: true
-    severity: warning
+    severity: error
   ImportPath:
     enabled: true
     leading_underscore: false
