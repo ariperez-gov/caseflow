@@ -86,9 +86,9 @@
 }
 
 .cf-form-textinput[readonly] {
-  background: $color-gray-lightest !important;
+  background: $color-gray-lightest;
   color: $color-gray-dark;
-  opacity: 1 !important;
+  opacity: 1;
 }
 
 .cf-loading-button-text {
@@ -139,7 +139,7 @@
 }
 
 .cf-msg-screen-deck {
-  margin-bottom: 4rem !important;
+  margin-bottom: 4rem;
 }
 
 .cf-tab-window-body {

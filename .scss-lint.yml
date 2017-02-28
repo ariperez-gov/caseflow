@@ -43,7 +43,8 @@ linters:
   IdSelector:
     enabled: true
   ImportantRule:
-    enabled: false
+    enabled: true
+    severity: warning
   ImportPath:
     enabled: true
     leading_underscore: false
