@@ -48,13 +48,13 @@ class Document < ActiveRecord::Base
   # of S3 integration.
   def fetch_and_cache_document_from_vbms
     @content = Appeal.repository.fetch_document_file(self)
-    S3Service.store_file(file_name, @content)
+    S3Service.store_file(file_name, @content, bucket: document_bucket)
     Rails.logger.info("File #{vbms_document_id} fetched from VBMS")
     @content
   end
 
   def fetch_content
-    content = S3Service.fetch_content(file_name)
+    content = S3Service.fetch_content(file_name, bucket: document_bucket)
     content && Rails.logger.info("File #{vbms_document_id} fetched from S3")
     content || fetch_and_cache_document_from_vbms
   end
@@ -74,6 +74,11 @@ class Document < ActiveRecord::Base
 
   def default_path
     File.join(Rails.root, "tmp", "pdfs", file_name)
+  end
+
+  # We want to use a specific document bucket that is shared between the apps.
+  def document_bucket
+    Rails.application.config.s3_document_bucket_name
   end
 
   def to_hash
