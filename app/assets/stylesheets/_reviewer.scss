@@ -75,15 +75,6 @@ $bookmark-yellow: #efdf1a;
   bottom: 0;
 }
 
-// TODO: Get rid of the rule in caseflow commons that makes
-// this necessary!
-// scss-lint:disable QualifyingElement
-svg[aria-hidden=true],
-.fa[aria-hidden=true] {
-  display: inline !important;
-}
-// scss-lint:enable QualifyingElement
-
 .cf-sidebar-wrapper {
   float: right;
   width: 380px;
@@ -173,7 +164,7 @@ svg[aria-hidden=true],
 
 // TODO: Remove !important
 [type="button"].cf-pdf-button {
-  margin: 0 8px !important;
+  margin: 0 8px;
   color: inherit;
   padding: 0;
   background-color: transparent;
