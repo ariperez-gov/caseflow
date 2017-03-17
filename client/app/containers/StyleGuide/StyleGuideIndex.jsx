@@ -3,6 +3,7 @@ import StyleGuideModal from './StyleGuideModal';
 import StyleGuideTabs from './StyleGuideTabs';
 import StyleGuideLoadingButton from './StyleGuideLoadingButton';
 import StyleGuideTables from './StyleGuideTables';
+import StyleGuideFooter from './styleguide-footer';
 
 export default class StyleGuideIndex extends React.Component {
 
@@ -28,6 +29,9 @@ export default class StyleGuideIndex extends React.Component {
             </li>
             <li>
               <a href="#tables">Tables</a>
+            </li>
+            <li>
+              <a href="#footer">Footer</a>
             </li>
           </ul>
       </div>
@@ -55,6 +59,8 @@ export default class StyleGuideIndex extends React.Component {
         <StyleGuideLoadingButton />
         <div className="cf-help-divider"></div>
         <StyleGuideTables />
+        <div className="cf-help-divider" />
+        <StyleGuideFooter />
     </div>
     </div>;
   }
