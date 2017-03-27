@@ -12,7 +12,7 @@ class Test::UsersController < ApplicationController
     User.before_set_user # for testing only
 
     session["user"] = User.authentication_service.get_user_session(params[:id])
-    redirect_to "/test/users"
+    render nothing: true, status: 200
   end
 
   # Set end products in DEMO

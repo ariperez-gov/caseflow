@@ -1,4 +1,11 @@
-<div class="cf-app-segment cf-app-segment--alt">
+<% content_for :page_title do certification_header("Testing") end %>
+<%= react_component("BaseContainer", props: {
+    page: "TestUsersPage",
+    users: @users,
+    currentUser: session["user"]
+  }) %>
+
+<!-- <div class="cf-app-segment cf-app-segment--alt">
   <div class="usa-grid-full">
     <div class="usa-width-one-half">
       <h1>Switch User</h1>
@@ -36,4 +43,4 @@
     <div class="usa-width-one-half">
     </div>
   </div>
-</div>
+</div> -->

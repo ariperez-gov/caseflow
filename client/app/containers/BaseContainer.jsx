@@ -11,6 +11,7 @@ import StyleGuideTabs from './StyleGuide/StyleGuideTabs';
 import CaseWorkerIndex from './CaseWorker/CaseWorkerIndex';
 import TasksManagerIndex from './TasksManager/TasksManagerIndex';
 import TestPage from './TestPage';
+import TestUsersPage from './TestUsersPage';
 import DecisionReviewer from '../reader/DecisionReviewer';
 import EstablishClaimComplete from './EstablishClaimPage/EstablishClaimComplete';
 import UnpreparedTasksIndex from './UnpreparedTasksIndex';
@@ -25,6 +26,7 @@ const Pages = {
   StyleGuideTabs,
   TasksManagerIndex,
   TestPage,
+  TestUsersPage,
   UnpreparedTasksIndex
 };
 
