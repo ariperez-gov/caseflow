@@ -17,16 +17,16 @@ export default class TestUsersPage extends React.Component {
 
     return <div className="sub-page">
       <ul>
-      {users.map(function(user){
+      {users.map((user) => {
         return <li>
           <Button
             name={user["full_name"]}
             onClick={this.setRole.bind(this, user)}
             classNames={["usa-button", "usa-button-outline"]}
           />
-          {Object.keys(user).map(function(s){return user[s]}).join(",")}
+          {Object.keys(user).map((keyname) => {return user[keyname]}).join(",")}
         </li>
-      }, this)}
+      })}
       </ul>
     </div>;
   }
