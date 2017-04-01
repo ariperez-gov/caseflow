@@ -9,18 +9,9 @@ export default class Button extends React.Component {
     }
   }
 
-  loadingClasses = (app, loading) => {
-    let classes = ` cf-${app}`;
-
-    if (loading) {
-      classes += " cf-loading";
-    }
-
-    return classes;
-  }
-
   render() {
     let {
+      ariaLabel,
       app,
       loadingText,
       classNames,
@@ -33,13 +24,30 @@ export default class Button extends React.Component {
       type
     } = this.props;
 
-    if (!children) {
-      children = name;
-    }
+    let LoadingIndicator = () => {
+      app = app || 'default';
 
-    if (loading) {
       children = loadingText || "Loading...";
-    }
+
+      return <span>
+        <button
+          id={`${id || `${type}-${name.replace(/\s/g, '-')}`}-loading`}
+          className={`${classNames.join(' ')} cf-${app} cf-loading`}
+          type={type}
+          disabled={true}
+          aria-label={ariaLabel}>
+          <span className="cf-loading-icon-container">
+            <span className="cf-loading-icon-front">
+              <span className="cf-loading-icon-back">
+                {children}
+              </span>
+            </span>
+          </span>
+        </button>
+      </span>;
+    };
+
+    children = children || name;
 
     if (disabled || loading) {
       // remove any usa-button styling and then add disabled styling
@@ -50,18 +58,15 @@ export default class Button extends React.Component {
     return <span>
       <button
         id={id || `${type}-${name.replace(/\s/g, '-')}`}
-        className={classNames.join(' ') + this.loadingClasses(app, loading)}
+        className={classNames.join(' ') + (loading ? " hidden-field" : "")}
         type={type}
         disabled={disabled}
-        onClick={onClick}>
-        <span className="cf-loading-icon-container">
-          <span className="cf-loading-icon-front">
-            <span className="cf-loading-icon-back">
-              {children}
-            </span>
-          </span>
-        </span>
+        onClick={onClick}
+        aria-label={ariaLabel}>
+          {children}
       </button>
+
+      { loading && <LoadingIndicator /> }
     </span>;
   }
 }
@@ -72,7 +77,7 @@ Button.defaultProps = {
 };
 
 Button.propTypes = {
-  app: PropTypes.string,
+  ariaLabel: PropTypes.string,
   children: PropTypes.node,
   classNames: PropTypes.arrayOf(PropTypes.string),
   disabled: PropTypes.bool,

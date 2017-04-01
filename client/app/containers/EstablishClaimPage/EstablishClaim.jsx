@@ -61,6 +61,20 @@ const PARTIAL_GRANT_MODIFIER_OPTIONS = [
   '179'
 ];
 
+const CREATE_EP_ERRORS = {
+  "duplicate_ep": {
+    header: 'At this time, we are unable to assign or create a new EP for this claim.',
+    body: 'An EP with that modifier was previously created for this claim. ' +
+          'Try a different modifier or select Cancel at the bottom of the ' +
+          'page to release this claim and proceed to process it outside of Caseflow.'
+  },
+  "default": {
+    header: 'System Error',
+    body: 'Something went wrong on our end. We were not able to create an End Product. ' +
+          'Please try again later.'
+  }
+};
+
 // This page is used by AMC to establish claims. This is
 // the last step in the appeals process, and is after the decsion
 // has been made. By establishing an EP, we ensure the appeal
@@ -216,16 +230,19 @@ export default class EstablishClaim extends BaseForm {
         } else {
           this.handleNotePageSubmit(null);
         }
-      }, () => {
+      }, (error) => {
+        let errorMessage = CREATE_EP_ERRORS[error.response.body.error_code] ||
+                          CREATE_EP_ERRORS.default;
+
         this.setState({
           loading: false
         });
+
         handleAlert(
-        'error',
-        'System Error',
-        'Something went wrong on our end. We were not able to create an End Product.' +
-        ' Please try again later.'
-      );
+          'error',
+          errorMessage.header,
+          errorMessage.body
+        );
       });
   }
 
@@ -361,8 +378,12 @@ export default class EstablishClaim extends BaseForm {
       specialIssues: this.prepareSpecialIssues()
     });
 
-    return ApiUtil.put(`/dispatch/establish-claim/${this.props.task.id}/update_appeal`,
+    return ApiUtil.put(`/dispatch/establish-claim/${this.props.task.id}/update-appeal`,
       { data }).then(() => {
+
+        this.setState({
+          loading: false
+        });
 
         if (!this.willCreateEndProduct()) {
           if (this.state.reviewForm.decisionType.value === FULL_GRANT) {
@@ -376,10 +397,6 @@ export default class EstablishClaim extends BaseForm {
         } else {
           this.handlePageChange(FORM_PAGE);
         }
-
-        this.setState({
-          loading: false
-        });
 
       });
   }
@@ -662,12 +679,12 @@ export default class EstablishClaim extends BaseForm {
     return (
       <div>
         <EstablishClaimProgressBar
-          isConfirmation={false}
-          isReviewDecision={true}
+          isReviewDecision={this.isDecisionPage()}
           isRouteClaim={!this.isDecisionPage()}
         />
         { this.isDecisionPage() &&
           <EstablishClaimDecision
+            loading={this.state.loading}
             decisionType={this.state.reviewForm.decisionType}
             handleCancelTask={this.handleCancelTask}
             handleFieldChange={this.handleFieldChange}
@@ -680,6 +697,7 @@ export default class EstablishClaim extends BaseForm {
         }
         { this.isAssociatePage() &&
           <AssociatePage
+            loading={this.state.loading}
             endProducts={this.props.task.appeal.non_canceled_end_products_within_30_days}
             task={this.props.task}
             decisionType={this.state.reviewForm.decisionType.value}
@@ -696,6 +714,7 @@ export default class EstablishClaim extends BaseForm {
         }
         { this.isFormPage() &&
           <EstablishClaimForm
+            loading={this.state.loading}
             claimForm={this.state.claimForm}
             claimLabelValue={this.getClaimTypeFromDecision().join(' - ')}
             handleCancelTask={this.handleCancelTask}
@@ -707,6 +726,7 @@ export default class EstablishClaim extends BaseForm {
         }
         { this.isNotePage() &&
           <EstablishClaimNote
+            loading={this.state.loading}
             appeal={this.props.task.appeal}
             handleSubmit={this.handleNotePageSubmit}
             showNotePageAlert={this.state.showNotePageAlert}
@@ -717,6 +737,7 @@ export default class EstablishClaim extends BaseForm {
         }
         { this.isEmailPage() &&
           <EstablishClaimEmail
+            loading={this.state.loading}
             appeal={this.props.task.appeal}
             handleCancelTask={this.handleCancelTask}
             handleEmailSubmit={this.handleEmailPageSubmit}
@@ -724,6 +745,7 @@ export default class EstablishClaim extends BaseForm {
             regionalOffice={this.getSpecialIssuesRegionalOffice()}
             regionalOfficeEmail={this.getSpecialIssuesEmail()}
             specialIssues={specialIssues}
+            handleBackToDecisionReview={this.handleBackToDecisionReview}
           />
         }
 

@@ -7,7 +7,7 @@ export const linkToSingleDocumentView = (doc) => {
   let id = doc.id;
   let filename = doc.filename;
   let type = doc.type;
-  let receivedAt = doc.received_at;
+  let receivedAt = doc.receivedAt;
 
   return `/decision/review/show?id=${id}&type=${type}` +
     `&received_at=${receivedAt}&filename=${filename}`;
@@ -27,7 +27,6 @@ export const linkToSingleDocumentView = (doc) => {
 //   corresponding arrow will be missing.
 // Color labels: If you want users to be able to see/select color labels
 //   on the document pass in the onSetLabel handler.
-
 export default class PdfUI extends React.Component {
   constructor(props) {
     super(props);
@@ -41,20 +40,11 @@ export default class PdfUI extends React.Component {
   zoom = (delta) => () => {
     // TODO: Fix scrolling when zooming
     // let zoomFactor = (this.state.scale + delta) / this.state.scale;
-
     this.setState({
       scale: this.state.scale + delta
     });
     // this.draw(this.props.file,
     //   document.getElementById('scrollWindow').scrollTop * zoomFactor);
-  }
-
-  onColorLabelChange = (label) => () => {
-    if (label === this.props.label) {
-      this.props.onSetLabel('');
-    } else {
-      this.props.onSetLabel(label);
-    }
   }
 
   onPageChange = (currentPage, numPages) => {
@@ -86,6 +76,7 @@ export default class PdfUI extends React.Component {
             <Button
               name="newTab"
               classNames={["cf-pdf-button"]}
+              ariaLabel="open document in new tab"
               onClick={() => window.open(
                 linkToSingleDocumentView(this.props.doc), '_blank')}>
               {this.props.doc.filename}
@@ -99,7 +90,8 @@ export default class PdfUI extends React.Component {
             <Button
               name="previous"
               classNames={["cf-pdf-button"]}
-              onClick={this.props.onPreviousPdf}>
+              onClick={this.props.onPreviousPdf}
+              ariaLabel="previous PDF">
               <i className="fa fa-arrow-circle-left fa-3x" aria-hidden="true"></i>
             </Button>
           </span> }
@@ -108,13 +100,15 @@ export default class PdfUI extends React.Component {
             <Button
               name="next"
               classNames={["cf-pdf-button cf-right-side"]}
-              onClick={this.props.onNextPdf}>
+              onClick={this.props.onNextPdf}
+              ariaLabel="next PDF">
               <i className="fa fa-arrow-circle-right fa-3x" aria-hidden="true"></i>
             </Button>
           </span> }
       </div>
       <div>
         <Pdf
+          comments={this.props.comments}
           documentId={this.props.doc.id}
           file={this.props.file}
           pdfWorker={this.props.pdfWorker}
@@ -122,13 +116,14 @@ export default class PdfUI extends React.Component {
           onPageClick={this.props.onPageClick}
           scale={this.state.scale}
           onPageChange={this.onPageChange}
+          onCommentClick={this.props.onCommentClick}
         />
       </div>
       <div className="cf-pdf-footer cf-pdf-toolbar">
         <div className="usa-grid-full">
           <div className="usa-width-one-third cf-pdf-buttons-left">
             { this.props.onSetLabel && <DocumentLabels
-              onClick={this.onColorLabelChange}
+              onClick={this.props.onSetLabel}
               selectedLabels={selectedLabels}/> }
           </div>
           <div className="usa-width-one-third cf-pdf-buttons-center">
@@ -138,25 +133,29 @@ export default class PdfUI extends React.Component {
             <Button
               name="download"
               classNames={["cf-pdf-button cf-pdf-spaced-buttons"]}
+              ariaLabel="download"
             >
               <i className="cf-pdf-button fa fa-download" aria-hidden="true"></i>
             </Button>
             <Button
               name="zoomOut"
               classNames={["cf-pdf-button cf-pdf-spaced-buttons"]}
-              onClick={this.zoom(-0.3)}>
+              onClick={this.zoom(-0.3)}
+              ariaLabel="zoom out">
               <i className="fa fa-minus" aria-hidden="true"></i>
             </Button>
             <Button
               name="fit"
               classNames={["cf-pdf-button cf-pdf-spaced-buttons"]}
-              onClick={this.zoom(1)}>
+              onClick={this.zoom(1)}
+              ariaLabel="fit to screen">
               <i className="fa fa-arrows-alt" aria-hidden="true"></i>
             </Button>
             <Button
               name="zoomIn"
               classNames={["cf-pdf-button cf-pdf-spaced-buttons"]}
-              onClick={this.zoom(0.3)}>
+              onClick={this.zoom(0.3)}
+              ariaLabel="zoom in">
               <i className="fa fa-plus" aria-hidden="true"></i>
             </Button>
           </div>
@@ -167,7 +166,18 @@ export default class PdfUI extends React.Component {
 }
 
 PdfUI.propTypes = {
-  doc: PropTypes.object.isRequired,
+  comments: PropTypes.arrayOf(PropTypes.shape({
+    content: PropTypes.string,
+    uuid: PropTypes.number
+  })),
+  doc: PropTypes.shape({
+    filename: PropTypes.string,
+    id: React.PropTypes.oneOfType([
+      React.PropTypes.string,
+      React.PropTypes.number]),
+    type: PropTypes.string,
+    receivedAt: PropTypes.string
+  }).isRequired,
   file: PropTypes.string.isRequired,
   id: PropTypes.string.isRequired,
   pdfWorker: PropTypes.string.isRequired,
@@ -175,5 +185,6 @@ PdfUI.propTypes = {
   onShowList: PropTypes.func,
   onNextPdf: PropTypes.func,
   onPreviousPdf: PropTypes.func,
-  onSetLabel: PropTypes.func
+  onSetLabel: PropTypes.func,
+  onCommentClick: PropTypes.func
 };

@@ -10,13 +10,15 @@ export default class StyleGuideComponentTitle extends React.Component {
     } = this.props;
 
     let ViewSourceCodeLink = (props) => {
+
       /* eslint-disable max-len */
       let baseUrl = "https://github.com/department-of-veterans-affairs/caseflow/blob/master/client/app/containers/StyleGuide/";
+
       /* eslint-enable max-len */
 
       return <span>
         <a className="usa-button" href={baseUrl + props.link} target="_blank">
-          <GithubIcon /> View Source Code
+          <GithubIcon /> View source code
         </a>
       </span>;
     };

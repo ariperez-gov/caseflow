@@ -1,8 +1,11 @@
 import React from 'react';
 import StyleGuideModal from './StyleGuideModal';
 import StyleGuideTabs from './StyleGuideTabs';
+import StyleGuideProgressBar from './StyleGuideProgressBar';
 import StyleGuideLoadingButton from './StyleGuideLoadingButton';
+import StyleGuideRadioField from './StyleGuideRadioField';
 import StyleGuideTables from './StyleGuideTables';
+import StyleGuideTextInput from './StyleGuideTextInput';
 
 export default class StyleGuideIndex extends React.Component {
 
@@ -24,10 +27,19 @@ export default class StyleGuideIndex extends React.Component {
               <a href="#tabs">Tabs</a>
             </li>
             <li>
-              <a href="#loading_button">Loading Button</a>
+              <a href="#loading_buttons">Loading Buttons</a>
+            </li>
+            <li>
+              <a href="#radios">Radio Fields</a>
             </li>
             <li>
               <a href="#tables">Tables</a>
+            </li>
+            <li>
+              <a href="#progress_bar">Progress Bar</a>
+            </li>
+            <li>
+              <a href="#text_input">Text Input</a>
             </li>
           </ul>
       </div>
@@ -54,7 +66,13 @@ export default class StyleGuideIndex extends React.Component {
         <div className="cf-help-divider"></div>
         <StyleGuideLoadingButton />
         <div className="cf-help-divider"></div>
+        <StyleGuideRadioField />
+        <div className="cf-help-divider"></div>
         <StyleGuideTables />
+        <div className="cf-help-divider"></div>
+        <StyleGuideProgressBar />
+        <div className="cf-help-divider"></div>
+        <StyleGuideTextInput />
     </div>
     </div>;
   }

@@ -1,19 +1,10 @@
 import React, { PropTypes } from 'react';
 import EstablishClaimProgressBar from './EstablishClaimProgressBar';
-
-import ApiUtil from '../../util/ApiUtil';
-import Button from '../../components/Button';
+import EstablishClaimToolbar from './EstablishClaimToolbar';
 
 const PARSE_INT_RADIX = 10;
 
 export default class EstablishClaimComplete extends React.Component {
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      isLoading: false
-    };
-  }
 
   render() {
 
@@ -43,40 +34,9 @@ export default class EstablishClaimComplete extends React.Component {
       Math.ceil(totalCases / employeeCountInt) : 0;
     hasQuotaReached = (totalCasesCompleted >= casesAssigned) && (casesAssigned > 0);
 
-    let NoMoreClaimsButton = () => {
-      return <div>
-        <span className="cf-button-associated-text-right">
-          There are no more claims in your queue
-        </span>
-
-        <Button
-          name={buttonText}
-          classNames={["cf-push-right"]}
-          disabled={true}
-        />
-      </div>;
-    };
-
-    let NextClaimButton = () => {
-      return <div>
-        <span className="cf-button-associated-text-right">
-          { casesAssigned } cases assigned, { totalCasesCompleted } completed
-        </span>
-
-        <Button
-          name={buttonText}
-          onClick={this.establishNextClaim}
-          classNames={["usa-button-primary", "cf-push-right"]}
-          loading={this.state.isLoading}
-        />
-      </div>;
-    };
-
     return <div>
       <EstablishClaimProgressBar
         isConfirmation={true}
-        isReviewDecision={true}
-        isRouteClaim={true}
       />
 
       <div
@@ -95,40 +55,14 @@ export default class EstablishClaimComplete extends React.Component {
           <span className="cf-icon-success--bg"></span>{listValue}</li>)}
       </ul>
     </div>
-
-    <div className="cf-app-segment">
-      <div className="cf-push-left">
-        <a href="/dispatch/establish-claim">View Work History</a>
-      </div>
-
-      <div className="cf-push-right">
-        { availableTasks && <NextClaimButton /> }
-        { !availableTasks && <NoMoreClaimsButton /> }
-      </div>
-    </div>
+    <EstablishClaimToolbar
+      availableTasks={availableTasks}
+      buttonText={buttonText}
+      casesAssigned={casesAssigned}
+      totalCasesCompleted={totalCasesCompleted}
+    />
     </div>;
   }
-
-  establishNextClaim = () => {
-    this.setState({
-      isLoading: true
-    });
-
-    ApiUtil.patch(`/dispatch/establish-claim/assign`).
-    then((response) => {
-      window.location = `/dispatch/establish-claim/${response.body.next_task_id}`;
-    }, () => {
-      this.props.handleAlert(
-        'error',
-        'Error',
-        'There was an error establishing the next claim. Please try again later'
-      );
-
-      this.setState({
-        isLoading: false
-      });
-    });
-  };
 
 }
 

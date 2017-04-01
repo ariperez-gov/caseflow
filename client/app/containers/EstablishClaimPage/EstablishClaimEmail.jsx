@@ -41,25 +41,8 @@ export default class EstablishClaimEmail extends BaseForm {
         confirmBox: new FormField(false),
         emailField: new FormField(email)
       },
-      noEmailNote: note,
-      isLoading: false
+      noEmailNote: note
     };
-  }
-
-  handleEmailSubmit = () => {
-    this.setState({
-      isLoading: true
-    });
-
-    this.props.handleEmailSubmit();
-  }
-
-  handleNoEmailSubmit = () => {
-    this.setState({
-      isLoading: true
-    });
-
-    this.props.handleNoEmailSubmit();
   }
 
   render() {
@@ -83,7 +66,7 @@ export default class EstablishClaimEmail extends BaseForm {
             <p>Please send the following email message to the office
               responsible for implementing this grant.</p>
             <p><b>RO:</b> {this.props.regionalOffice}</p>
-            <p><b>RO email:</b> {this.props.regionalOfficeEmail.join(',')}</p>
+            <p><b>RO email:</b> {this.props.regionalOfficeEmail.join('; ')}</p>
           </div>
 
           <TextareaField
@@ -103,6 +86,13 @@ export default class EstablishClaimEmail extends BaseForm {
         </div>
 
         <div className="cf-app-segment" id="establish-claim-buttons">
+          <div className="cf-push-left">
+            <Button
+              name="< Back to Decision Review"
+              onClick={this.props.handleBackToDecisionReview}
+              classNames={["cf-btn-link"]}
+            />
+          </div>
           <div className="cf-push-right">
             <Button
             name="Cancel"
@@ -114,8 +104,8 @@ export default class EstablishClaimEmail extends BaseForm {
               name="Finish routing claim"
               classNames={["usa-button-primary"]}
               disabled={!this.state.emailForm.confirmBox.value}
-              onClick={this.handleEmailSubmit}
-              loading={this.state.isLoading}
+              onClick={this.props.handleEmailSubmit}
+              loading={this.props.loading}
             />
           </div>
         </div>
@@ -146,6 +136,13 @@ export default class EstablishClaimEmail extends BaseForm {
             />
           </div>
           <div className="cf-app-segment" id="establish-claim-buttons">
+            <div className="cf-push-left">
+              <Button
+                name="< Back to Decision Review"
+                onClick={this.props.handleBackToDecisionReview}
+                classNames={["cf-btn-link"]}
+              />
+            </div>
             <div className="cf-push-right">
               <Button
                   name="Cancel"
@@ -157,8 +154,8 @@ export default class EstablishClaimEmail extends BaseForm {
                   name="Release claim"
                   classNames={["usa-button-secondary"]}
                   disabled={!this.state.emailForm.confirmBox.value}
-                  onClick={this.handleNoEmailSubmit}
-                  loading={this.state.isLoading}
+                  onClick={this.props.handleNoEmailSubmit}
+                  loading={this.props.loading}
               />
             </div>
           </div>
@@ -171,6 +168,7 @@ export default class EstablishClaimEmail extends BaseForm {
 EstablishClaimEmail.propTypes = {
   appeal: PropTypes.object.isRequired,
   handleCancelTask: PropTypes.func.isRequired,
+  handleBackToDecisionReview: PropTypes.func.isRequired,
   handleEmailSubmit: PropTypes.func.isRequired,
   handleNoEmailSubmit: PropTypes.func.isRequired,
   regionalOffice: PropTypes.string,
