@@ -1,4 +1,4 @@
-source 'https://rubygems.org'
+source 'https://rubygems.org/'
 
 gem "caseflow", git: "https://github.com/department-of-veterans-affairs/caseflow-commons", ref: "da96a1bebc5"
 
