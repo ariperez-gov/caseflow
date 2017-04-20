@@ -215,6 +215,7 @@ class AppealRepository
 
     appeal.case_record.bftbind = nil
 
+    # rubocop:disable Style/IfInsideElse
     # Certification v2 - use the hearing preference that the user confirms.
     if FeatureToggle.enabled?(:certification_v2)
       appeal.case_record.bfhr = VACOLS::Case::HEARING_REQUEST_TYPES.key(certification.hearing_preference.to_sym)
@@ -222,6 +223,7 @@ class AppealRepository
     else
       appeal.case_record.bftbind = "X" if appeal.hearing_request_type == :travel_board
     end
+    # rubocop:enable Style/IfInsideElse
 
     MetricsService.record("VACOLS: certify #{appeal.vacols_id}",
                           service: :vacols,
