@@ -210,20 +210,15 @@ class AppealRepository
   def self.certify(appeal:, certification:)
     certification_date = AppealRepository.dateshift_to_utc Time.zone.now
 
-    # TODO(alex):
-    # if certification v2 is enabled,
-    # appeal.case_record.bfhr
-    # '1' - Central Office
-    # '2' - Travel Board/Video hearing
-    # '5' - None
-
     appeal.case_record.bfdcertool = certification_date
     appeal.case_record.bf41stat = certification_date
 
+    appeal.case_record.bftbind = nil
+
     # Certification v2 - use the hearing preference that the user confirms.
-    if certification.hearing_preference
-      appeal.case_record.bfhr = VACOLS::Case::HEARING_REQUEST_TYPES.key(certification.hearing_preference)
-      appeal.case_record.bftbind = "X" if certification.hearing_preference == :travel_board
+    if FeatureToggle.enabled?(:certification_v2)
+      appeal.case_record.bfhr = VACOLS::Case::HEARING_REQUEST_TYPES.key(certification.hearing_preference.to_sym)
+      appeal.case_record.bftbind = "X" if certification.hearing_preference.to_sym == :travel_board
     else
       appeal.case_record.bftbind = "X" if appeal.hearing_request_type == :travel_board
     end
