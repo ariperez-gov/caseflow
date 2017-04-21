@@ -218,8 +218,8 @@ class AppealRepository
     # rubocop:disable Style/IfInsideElse
     # Certification v2 - use the hearing preference that the user confirms.
     if FeatureToggle.enabled?(:certification_v2)
-      appeal.case_record.bfhr = VACOLS::Case::HEARING_REQUEST_TYPES.key(certification.hearing_preference.to_sym)
-      appeal.case_record.bftbind = "X" if certification.hearing_preference.to_sym == :travel_board
+      appeal.case_record.bfhr = VACOLS::Case::HEARING_PREFERENCE_TYPES_V2[certification.hearing_preference.to_sym][:vacols_value]
+      appeal.case_record.bftbind = "X" if VACOLS::Case::HEARING_PREFERENCE_TYPES_V2[certification.hearing_preference.to_sym][:video_hearing]
     else
       appeal.case_record.bftbind = "X" if appeal.hearing_request_type == :travel_board
     end
