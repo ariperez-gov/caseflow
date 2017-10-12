@@ -1,6 +1,218 @@
 // Add scss includes explicitly here.
 @import 'caseflow_main';
 
+// variables here should eventually find their way into commons
+@import 'variables';
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  color: $color-gray-dark;
+}
+
+.cf-content {
+  min-height: 100%;
+
+  header {
+    background: $color-white;
+    line-height: 4em;
+    margin-bottom: $cf-30px;
+
+    > div {
+      &:first-child {
+
+        border-bottom: 1px solid $color-gray-lighter;
+
+        &::after {
+          content: '\00a0';
+          line-height: 0;
+          display: block;
+          clear: both;
+        }
+      }
+
+      &:not(:first-child) {
+        line-height: normal;
+      }
+    }
+
+    .cf-nav {
+      padding: 0;
+      border: 0;
+    }
+
+    [class*="cf-logo-image-"] {
+      width: auto;
+      height: auto;
+      background-repeat: no-repeat;
+      background-position: center left;
+    }
+  }
+}
+
+.cf-logo-name,
+.cf-application-title {
+  color: $color-gray-medium;
+}
+
+.cf-dropdown {
+  a {
+    color: $color-gray-medium;
+
+    &:hover {
+      color: $color-gray-medium;
+    }
+  }
+
+  li {
+    a:hover {
+      color: $color-white;
+    }
+  }
+}
+
+
+
+.cf-content-inside {
+  padding-bottom: 12.353em;
+
+  &.full-page {
+    padding-bottom: 0;
+  }
+
+  .cf-logo {
+    margin: 0;
+    display: inline-block;
+    line-height: 3em;
+
+    a {
+      color: $color-gray-dark;
+      padding-left: 2.6em;
+    }
+  }
+
+  .cf-app-segment {
+    margin-bottom: $cf-30px;
+  }
+
+  .cf-app-segment--alt {
+    border: 1px solid $color-gray-lighter;
+  }
+}
+
+.cf-app-footer {
+  margin-top: 100px;
+  min-height: 5em;
+  box-sizing: border-box;
+
+  > div {
+    border-top: 1px solid $color-gray-lighter;
+    padding: $cf-30px 0;
+    height: auto;
+
+    &::after {
+      content: '\00a0';
+      line-height: 0;
+      display: block;
+      clear: both;
+    }
+  }
+}
+
+.cf-dropdown-trigger::after {
+  background-size: .75em;
+}
+
+.cf-dropdown-menu {
+  position: absoulte;
+  top: 3em;
+  width: auto;
+  min-width: 13em;
+}
+
+.cf-actions {
+  margin-top: $cf-30px;
+  line-height: 2.225em;
+  clear: both;
+
+  [type="submit"] {
+    margin: 0;
+  }
+
+  &::after {
+    content: '\00a0';
+    line-height: 0;
+    display: block;
+    clear: both;
+  }
+}
+
+// Used for Caseflow app header rendered in Rails
+@mixin app-width($app) {
+  margin-left: auto;
+  margin-right: auto;
+
+  @if $app == 'hearings' or $app == 'reader' {
+    width: 85vw;
+  } @else {
+    width: 75vw;
+  }
+}
+
+// Used for Caseflow app header rendered in React
+.cf-wide-app {
+  .usa-grid {
+    padding-left: 0;
+    padding-right: 0;
+    max-width: 85vw;
+  }
+}
+
+.cf-app-hearings {
+  .cf-app-width {
+    @include app-width('hearings');
+  }
+}
+
+.cf-app-dispatch,
+.cf-app-dispatch-arc,
+.cf-app-not-set,
+.cf-app-internal {
+  .cf-app-width {
+    @include app-width('dispatch');
+  }
+}
+
+.cf-app-certification {
+  .cf-app-width {
+    @include app-width('cert');
+  }
+}
+
+.cf-app-efolder {
+  .cf-app-width {
+    @include app-width('efolder');
+  }
+}
+
+.cf-app-intake {
+  .cf-app-width {
+    @include app-width('intake');
+  }
+}
+
+.cf-app-reader {
+  // If we add this line, an extraneous scrollbar on Windows will disappear.
+  // However, this also makes a test fail on Travis (but not Jenkins).
+  // Once we cut over to Jenkins fully, let's re-enable it.
+  // overflow-y: hidden;
+
+  .cf-app-width {
+    @include app-width('reader');
+  }
+}
+
 .cf-logo-image-default {
   background-image: url(asset-path('caseflow-default-logo.svg'));
   width: 32px;
@@ -24,6 +236,27 @@
 
 .cf-logo-image-reader {
   background-image: url(asset-path('caseflow-reader-logo.svg'));
+  width: 32px;
+  height: 32px;
+  background-size: 32px 32px;
+}
+
+.cf-logo-image-efolder {
+  background-image: url(asset-path('caseflow-efolder-logo.svg'));
+  width: 32px;
+  height: 32px;
+  background-size: 32px 32px;
+}
+
+.cf-logo-image-feedback {
+  background-image: url(asset-path('caseflow-feedback-logo.svg'));
+  width: 32px;
+  height: 32px;
+  background-size: 32px 32px;
+}
+
+.cf-logo-image-hearing-prep {
+  background-image: url(asset-path('caseflow-hearing-prep-logo.svg'));
   width: 32px;
   height: 32px;
   background-size: 32px 32px;
@@ -83,14 +316,9 @@
   display: none;
 }
 
-.cf-adjacent-buttons {
-  margin-left: 30px;
-  margin-right: 30px;
-}
-
 * + .cf-form-dropdown {
-  margin-top: 2rem;
-  margin-bottom: 2rem;
+  margin-top: 1.6rem;
+  margin-bottom: 1.6rem;
 }
 
 .cf-form-textinput[readonly] {
@@ -122,7 +350,7 @@
 
 .cf-button-associated-text-right {
   color: $color-gray;
-  margin-right: 10px;
+  margin-right: 30px;
   line-height: 35px;
 }
 
@@ -134,6 +362,10 @@
 .cf-modal-body {
   max-height: 100%;
   overflow-y: auto;
+}
+
+.cf-bare-list {
+  list-style-type: none;
 }
 
 .cf-checklist {
@@ -155,6 +387,10 @@
 
 .cf-msg-screen-deck {
   margin-bottom: 4rem !important;
+
+  &.cf-success-emoji-text {
+    width: auto;
+  }
 }
 
 .cf-tab-window-body {
@@ -200,6 +436,27 @@ select {
   @include animation(spin 6s linear infinite);
 }
 
+.cf-lock-icon {
+  vertical-align: middle;
+}
+
+// Candidate for commons
+.cf-btn-link {
+
+  .cf-no-padding,
+  &.cf-no-padding {
+    padding: 0;
+  }
+
+  &.cf-no-margin {
+    margin: 0;
+  }
+
+  &:hover {
+    background-color: transparent;
+  }
+}
+
 .cf-react-loading-indicator {
   background-color: $color-white;
   border-radius: 5px;
@@ -232,6 +489,8 @@ select {
 
 .cf-left-padding {
   padding-left: 75px;
+  margin-top: 20px;
+  margin-bottom: 30px;
 }
 
 .cf-push-left {
@@ -243,6 +502,7 @@ select {
 
 .cf-bottom-border {
   border-bottom: 1px solid $color-gray-light;
+  margin: 40px auto;
 }
 
 .cf-bold-ordered-list {
@@ -253,57 +513,212 @@ select {
   }
 }
 
-// caseflow-commons
-.cf-form-checkboxes-inline {
-  .checkbox {
-    float: left;
-    padding-right: rem(30px);
-    margin-bottom: .5em;
-  }
-}
+.usa-alert.no-title {
+  background-position: 1rem 1.5rem;
 
-// caseflow-commons
-[class*='cf-form-checkbox'] {
-  legend {
-    margin-bottom: .75em;
+  .usa-alert-text {
+    font-size: 19px;
   }
-}
-
-// caseflow-commons - replace exising rule with this one:
-.usa-input-error [type="radio"] {
-  + label::before {
-    box-shadow: 0 0 0 2px $color-white, 0 0 0 3px $color-gray-medium;
-  }
-}
-
-// caseflow-commons
-.cf-secondary-disabled {
-  opacity: .25;
 }
 
 .cf-no-styling-list {
   margin: 0;
   padding: 0;
+  line-height: 1;
 }
 
-// Make a button look like a link
-// caseflow commons
-.cf-btn-link {
-  &:hover,
-  &.button-hover {
-    background-color: $color-white;
-    color: $color-primary-darker;
-    text-decoration: underline;
+.cf-icon-button {
+  cursor: pointer;
+}
+
+.cf-gray {
+  color: $color-gray;
+}
+
+// add to commons
+.cf-font-light {
+  font-weight: 300;
+}
+
+// add to commons
+.cf-form-textarea {
+  margin-bottom: 40px;
+
+  p {
+    margin-top: 0;
+  }
+}
+
+// candidate for commons
+.cf-inline-field {
+  &.cf-form-textinput {
+    margin-bottom: 0;
   }
 
-  &:active,
-  &.button-active {
-    background-color: $color-white;
-    color: $color-primary-darkest;
-    text-decoration: underline;
+  &[type="number"] {
+    width: 60px;
+    height: 35px;
+  }
+}
+
+// add to commons
+.cf-form-textinput {
+  margin-bottom: 30px;
+}
+
+// add to commons
+.cf-inline-form {
+  line-height: 4em;
+
+  .cf-form-int-input {
+    input {
+      &[class*="cf-form-textinput"] {
+        margin: 0 12px;
+        width: 3em;
+        height: 36px;
+      }
+    }
+  }
+}
+
+.cf-borderless-rows {
+
+  thead {
+    border: 0;
+    padding: 0;
+
+    tr {
+      border: 0;
+      padding: 0;
+
+      th {
+        border: 0;
+        padding: 0;
+      }
+    }
   }
 
-  &.usa-button-disabled {
-    color: $color-gray-light;
+  tbody {
+    border: 0;
+    padding: 0;
+
+    tr {
+      border: 0;
+      padding: 0;
+
+      td {
+        border: 0;
+        padding: 0;
+      }
+    }
   }
+}
+
+.cf-title-meta-right {
+  line-height: 1em;
+  margin-bottom: 1.76em;
+
+  .title,
+  .meta {
+    display: inline-block;
+    vertical-align: middle;
+    margin: 0;
+  }
+
+  .title {
+    width: 55%;
+  }
+
+  .meta {
+    text-align: right;
+    font-size: 1.15em;
+    width: 45%;
+
+    span {
+      font-size: 1.26em;
+    }
+  }
+}
+
+.vbms-id {
+  color: $color-gray-light;
+}
+
+//candidate for commons
+.usa-accordion-button {
+  background-image: url(asset-path('minus.svg'));
+
+  &[aria-expanded=false] {
+    background-image: url(asset-path('plus.svg'));
+  }
+}
+
+//candidate for commons
+.usa-accordion-bordered-outline {
+  .usa-accordion-button {
+    border: 1px solid $color-gray-light;
+  }
+}
+
+//candidate for commons
+.usa-accordion-bordered,
+.usa-accordion,
+.usa-accordion-bordered-outline {
+  margin-bottom: 40px;
+}
+
+// candidate for commons
+.usa-alert-heading {
+  font-family: 'Source Sans Pro';
+}
+
+.cf-work-assignments {
+  td {
+    &:first-child {
+      > span {
+        display: block;
+        overflow: auto;
+      }
+    }
+
+    .cf-form-int-input {
+      width: 3.2em;
+      margin: 0 auto;
+    }
+  }
+
+  .cf-no-padding {
+    padding: 0 3px;
+    vertical-align: middle;
+  }
+
+  .cf-empty-cell-header {
+    min-width: 90px;
+  }
+}
+
+.cf-work-assignments-user-index {
+  display: block;
+  float: left;
+  width: 1.5em;
+}
+
+.cf-work-assignments-user {
+  display: block;
+  padding-left: 1.6em;
+  white-space: nowrap;
+}
+
+.cf-form-textinput,
+.cf-form-textarea,
+.cf-form-dropdown {
+  label {
+    margin-bottom: 8px;
+  }
+}
+
+.cf-veteran-name-control {
+  line-height: 2.2;
+  font-size: 22px;
+  color: $color-gray-dark;
 }

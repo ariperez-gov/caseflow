@@ -1,8 +1,11 @@
+# Note: The vacols_sequence_id column maps to the ISSUE table ISSSEQ column in VACOLS
+# Using this and the appeal's vacols_id, we can directly map a Caseflow issue back to its
+# VACOLS' equivalent
 class Issue
   include ActiveModel::Model
 
-  attr_accessor :program, :type, :category, :description, :disposition,
-                :program_description
+  attr_accessor :program, :type, :category, :description, :disposition, :levels,
+                :program_description, :note, :vacols_sequence_id
 
   PROGRAMS = {
     "02" => :compensation
@@ -24,13 +27,17 @@ class Issue
     disposition == :allowed
   end
 
+  def remanded?
+    disposition == :remanded
+  end
+
   # "New Material" (and "Non new material") are the exact
   # terms used internally by attorneys/judges. These mean the issue
   # was allowing/denying new material (such as medical evidence) to be used
   # in the appeal
   def new_material?
     program == :compensation &&
-      type == :service_connection &&
+      type[:name] == :service_connection &&
       category == :new_material
   end
 
@@ -38,13 +45,37 @@ class Issue
     !new_material?
   end
 
+  def attributes
+    {
+      vacols_sequence_id: vacols_sequence_id,
+      levels: levels,
+      program: program,
+      type: type,
+      category: category,
+      description: description,
+      disposition: disposition,
+      program_description: program_description,
+      note: note
+    }
+  end
+
   class << self
+    attr_writer :repository
+
     def description(hash)
       description = ["#{hash['isscode']} - #{hash['isscode_label']}"]
       description.push("#{hash['isslev1']} - #{hash['isslev1_label']}") if hash["isslev1"]
       description.push("#{hash['isslev2']} - #{hash['isslev2_label']}") if hash["isslev2"]
       description.push("#{hash['isslev3']} - #{hash['isslev3_label']}") if hash["isslev3"]
       description
+    end
+
+    def parse_levels_from_vacols(hash)
+      levels = []
+      levels.push((hash["isslev1_label"]).to_s) if hash["isslev1_label"]
+      levels.push((hash["isslev2_label"]).to_s) if hash["isslev2_label"]
+      levels.push((hash["isslev3_label"]).to_s) if hash["isslev3_label"]
+      levels
     end
 
     def load_from_vacols(hash)
@@ -54,13 +85,20 @@ class Issue
                     .parameterize.underscore.to_sym
 
       new(
+        levels: parse_levels_from_vacols(hash),
+        vacols_sequence_id: hash["issseq"],
         program: PROGRAMS[hash["issprog"]],
-        type: TYPES[hash["isscode"]],
+        type: { name: TYPES[hash["isscode"]], label: hash["isscode_label"] },
+        note: hash["issdesc"],
         category: CATEGORIES[category_code],
         program_description: "#{hash['issprog']} - #{hash['issprog_label']}",
         description: description(hash),
         disposition: disposition
       )
+    end
+
+    def repository
+      @repository ||= IssueRepository
     end
   end
 end

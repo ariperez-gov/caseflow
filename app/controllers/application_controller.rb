@@ -1,12 +1,5 @@
-class ApplicationController < ActionController::Base
-  # Prevent CSRF attacks by raising an exception.
-  # For APIs, you may want to use :null_session instead.
-  protect_from_forgery with: :exception
-
-  force_ssl if: :ssl_enabled?
-  before_action :check_out_of_service
-  before_action :strict_transport_security
-
+class ApplicationController < ApplicationBaseController
+  before_action :set_application
   before_action :set_timezone,
                 :setup_fakes,
                 :check_whats_new_cookie
@@ -16,35 +9,7 @@ class ApplicationController < ActionController::Base
   rescue_from ActiveRecord::RecordNotFound, with: :not_found
   rescue_from VBMS::ClientError, with: :on_vbms_error
 
-  def unauthorized
-    render status: 403
-  end
-
   private
-
-  def check_out_of_service
-    render "out_of_service", layout: "application" if Rails.cache.read("out_of_service")
-  end
-
-  def ssl_enabled?
-    Rails.env.production? && !(request.path =~ /health-check/)
-  end
-
-  def strict_transport_security
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains" if request.ssl?
-  end
-
-  def not_found
-    respond_to do |format|
-      format.html do
-        render "errors/404", layout: "application", status: 404
-      end
-      format.json do
-        render json: {
-          errors: ["Response not found"] }, status: 404
-      end
-    end
-  end
 
   def current_user
     @current_user ||= begin
@@ -56,7 +21,7 @@ class ApplicationController < ActionController::Base
   helper_method :current_user
 
   def feature_enabled?(feature)
-    FeatureToggle.enabled?(feature, current_user)
+    FeatureToggle.enabled?(feature, user: current_user)
   end
   helper_method :feature_enabled?
 
@@ -71,11 +36,48 @@ class ApplicationController < ActionController::Base
   end
   helper_method :logo_name
 
+  def application
+    RequestStore.store[:application].to_s.downcase
+  end
+  helper_method :application
+
+  def help_url
+    {
+      "certification" => certification_help_path,
+      "dispatch-arc" => dispatch_help_path,
+      "reader" => reader_help_path,
+      "hearings" => hearings_help_path
+    }[application] || help_path
+  end
+  helper_method :help_url
+
   # Link used when clicking logo
   def logo_path
     root_path
   end
   helper_method :logo_path
+
+  def dropdown_urls
+    urls = [
+      {
+        title: "Help",
+        link: help_url
+      },
+      {
+        title: "Send Feedback",
+        link: feedback_url,
+        target: "_blank"
+      }
+    ]
+
+    urls.append(title: "Switch User",
+                link: url_for(controller: "/test/users", action: "index")) if ApplicationController.dependencies_faked?
+    urls.append(title: "Sign Out",
+                link: url_for(controller: "/sessions", action: "destroy"))
+
+    urls
+  end
+  helper_method :dropdown_urls
 
   def certification_header(title)
     "&nbsp &gt &nbsp".html_safe + title
@@ -101,11 +103,15 @@ class ApplicationController < ActionController::Base
   # - Ensure the fakes are loaded (reset in dev mode on file save & class reload)
   # - Setup the default authenticated user
   def setup_fakes
-    Fakes::Initializer.development! if Rails.env.development? || Rails.env.demo?
+    Fakes::Initializer.setup!(Rails.env, app_name: application)
+  end
+
+  def set_application
+    RequestStore.store[:application] = "not-set"
   end
 
   def test_user?
-    !Rails.deploy_env?(:prod) && current_user.css_id == ENV["TEST_USER_ID"]
+    !Rails.deploy_env?(:prod) && current_user.css_id.include?(ENV["TEST_USER_ID"])
   end
   helper_method :test_user?
 
@@ -121,6 +127,11 @@ class ApplicationController < ActionController::Base
     session["return_to"] = request.original_url
     redirect_to login_path
   end
+
+  def page_title(title)
+    "&nbsp &#124 &nbsp".html_safe + title
+  end
+  helper_method :page_title
 
   def verify_authorized_roles(*roles)
     return true if current_user && roles.all? { |r| current_user.can?(r) }
@@ -139,7 +150,13 @@ class ApplicationController < ActionController::Base
   end
 
   def verify_system_admin
-    verify_authorized_roles("System Admin")
+    redirect_to "/unauthorized" unless current_user.admin?
+  end
+
+  # Set a flag to say the page has routing managed by React
+  # This suppress rails Google Analytics page view events
+  def react_routed
+    @react_routed = true
   end
 
   def on_vbms_error
@@ -170,6 +187,10 @@ class ApplicationController < ActionController::Base
                 "Caseflow Dispatch"
               elsif request.original_fullpath.include? "certifications"
                 "Caseflow Certification"
+              elsif request.original_fullpath.include? "reader"
+                "Caseflow Reader"
+              elsif request.original_fullpath.include? "hearings"
+                "Caseflow Hearing Prep"
               else
                 # default to just plain Caseflow.
                 "Caseflow"
@@ -180,6 +201,11 @@ class ApplicationController < ActionController::Base
     ENV["CASEFLOW_FEEDBACK_URL"] + "?" + param_object.to_param
   end
   helper_method :feedback_url
+
+  def build_date
+    return Rails.application.config.build_version[:date] if Rails.application.config.build_version
+  end
+  helper_method :build_date
 
   class << self
     def dependencies_faked?

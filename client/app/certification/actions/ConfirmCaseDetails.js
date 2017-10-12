@@ -1,6 +1,7 @@
 import * as Constants from '../constants/constants';
 import ApiUtil from '../../util/ApiUtil';
 
+
 export const updateProgressBar = () => ({
   type: Constants.UPDATE_PROGRESS_BAR,
   payload: {
@@ -22,6 +23,13 @@ export const changeRepresentativeType = (representativeType) => ({
   }
 });
 
+export const changeOrganizationName = (organizationName) => ({
+  type: Constants.CHANGE_ORGANIZATION_NAME,
+  payload: {
+    organizationName
+  }
+});
+
 export const changeOtherRepresentativeType = (otherRepresentativeType) => ({
   type: Constants.CHANGE_OTHER_REPRESENTATIVE_TYPE,
   payload: {
@@ -29,16 +37,22 @@ export const changeOtherRepresentativeType = (otherRepresentativeType) => ({
   }
 });
 
-export const onValidationFailed = (invalidFields) => ({
-  type: Constants.ON_VALIDATION_FAILED,
+export const changePoaMatches = (poaMatches) => ({
+  type: Constants.CHANGE_POA_MATCHES,
   payload: {
-    validationFailed: true,
-    invalidFields
+    poaMatches
   }
 });
 
-export const certificationUpdateFailure = () => ({
-  type: Constants.CERTIFICATION_UPDATE_FAILURE
+export const changePoaCorrectLocation = (poaCorrectLocation) => ({
+  type: Constants.CHANGE_POA_CORRECT_LOCATION,
+  payload: {
+    poaCorrectLocation
+  }
+});
+
+export const handleServerError = () => ({
+  type: Constants.HANDLE_SERVER_ERROR
 });
 
 export const certificationUpdateSuccess = () => ({
@@ -46,27 +60,30 @@ export const certificationUpdateSuccess = () => ({
 });
 
 export const certificationUpdateStart = (params, dispatch) => {
-  // On the backend, we only have one column for "representativeType",
-  // and we don't store "Other" in that column.
-  // TODO (alex): create column for this?
-  const type = params.representativeType === Constants.representativeTypes.OTHER ?
-    params.otherRepresentativeType : params.representativeType;
+  const type = params.representativeType;
   const name = params.representativeName;
+  const poaMatches = params.poaMatches === Constants.poaMatches.MATCH;
+  const poaCorrectInVacols = params.poaCorrectLocation === Constants.poaCorrectLocation.VACOLS;
+  const poaCorrectInBgs = params.poaCorrectLocation === Constants.poaCorrectLocation.VBMS;
 
   // Translate camelcase React names into snake case
   // Rails key names.
   /* eslint-disable camelcase */
   const update = {
     representative_type: type,
-    representative_name: name
+    representative_name: name,
+    poa_matches: poaMatches,
+    poa_correct_in_vacols: poaCorrectInVacols,
+    poa_correct_in_bgs: poaCorrectInBgs
   };
+
   /* eslint-enable "camelcase" */
 
   ApiUtil.put(`/certifications/${params.vacolsId}/update_v2`, { data: { update } }).
     then(() => {
       dispatch(certificationUpdateSuccess());
     }, (err) => {
-      dispatch(certificationUpdateFailure(err));
+      dispatch(handleServerError(err));
     });
 
   return {

@@ -1,48 +1,42 @@
 import React from 'react';
 import { connect } from 'react-redux';
+import StatusMessage from '../components/StatusMessage';
 
-const UnconnectedSuccess = ({
-  veteranName,
-  vbmsId
-}) => {
-  return <div id="certifications-generate"
-    className="cf-app-msg-screen cf-app-segment cf-app-segment--alt">
-    <h1 className="cf-success cf-msg-screen-heading">
-      Congratulations!
-    </h1>
-    <h2 className="cf-msg-screen-deck">
-      {veteranName}'s case {vbmsId} has been certified.
-    </h2>
 
-    <ul className="cf-checklist">
-        <li>
-          <span className="cf-icon-success--bg"></span>
-          Verified documents were in eFolder
-        </li>
-        <li>
-          <span className="cf-icon-success--bg cf-success"></span>
-          Completed and uploaded Form 8
-        </li>
-        <li>
-          <span className="cf-icon-success--bg cf-success"></span>
-          Representative and hearing fields were updated in VACOLS
-        </li>
-    </ul>
+export class Success extends React.Component {
+  render() {
+    let {
+      veteranName,
+      poaCorrectLocation
+    } = this.props;
 
-    <p className="cf-msg-screen-text">
-      {`Way to go! You can now close this window
-        and open another appeal in VACOLS.`}
-    </p>
-  </div>;
-};
+    const checklist = [
+      'Verified documents were in eFolder',
+      'Completed and uploaded Form 8',
+      'Hearing fields updated in VACOLS'];
+
+    const updatedRepInVacols = ['Representative fields updated in VACOLS'];
+
+    const message = `${veteranName}'s case has been certified.
+     You can now close this window and open another
+      appeal in VACOLS.`;
+
+    window.scrollTo(0, 0);
+
+    return <StatusMessage
+      title="Success!"
+      leadMessageList={[message]}
+      checklist={poaCorrectLocation === 'VACOLS' ? checklist : checklist.concat(updatedRepInVacols)}
+      type="success"
+      />;
+  }
+}
 
 const mapStateToProps = (state) => ({
   veteranName: state.veteranName,
-  vbmsId: state.vbmsId
+  poaCorrectLocation: state.poaCorrectLocation
 });
 
-const Success = connect(
+export default connect(
   mapStateToProps
-)(UnconnectedSuccess);
-
-export default Success;
+)(Success);

@@ -1,4 +1,5 @@
 class Task < ActiveRecord::Base
+  include RetryHelper
   include AASM
 
   belongs_to :user
@@ -6,7 +7,6 @@ class Task < ActiveRecord::Base
 
   validate :no_open_tasks_for_appeal, on: :create
 
-  class MustImplementInSubclassError < StandardError; end
   class UserAlreadyHasTaskError < StandardError; end
 
   enum completion_status: {
@@ -44,10 +44,6 @@ class Task < ActiveRecord::Base
       !(user.current_task(self).nil? && next_assignable.nil?)
     end
 
-    def unprepared
-      where(aasm_state: "unprepared")
-    end
-
     def completed_by(user)
       where(user_id: user.id, aasm_state: "completed")
     end
@@ -56,33 +52,24 @@ class Task < ActiveRecord::Base
       to_complete.where.not(assigned_at: nil)
     end
 
-    def newest_first(column = :created_at)
-      order(column => :desc)
+    def newest_first
+      order(created_at: :desc)
     end
 
     def oldest_first
       order(created_at: :asc)
     end
 
-    def completed_today
-      where(completed_at: DateTime.now.beginning_of_day.utc..DateTime.now.end_of_day.utc)
+    def completed_on(date)
+      where(aasm_state: "completed", completed_at: date.beginning_of_day..date.end_of_day)
     end
 
-    def completed_today_by_user(user_id)
-      where(completed_at: DateTime.now.beginning_of_day.utc..DateTime.now.end_of_day.utc,
-            user_id: user_id)
+    def prepared_before_today
+      where("prepared_at < ?", Date.yesterday.end_of_day)
     end
 
     def to_complete
-      where.not(aasm_state: "completed").where.not(aasm_state: "unprepared")
-    end
-
-    def completed
-      where(aasm_state: "completed")
-    end
-
-    def canceled
-      where(completion_status: 1)
+      where.not(aasm_state: "completed").where.not(aasm_state: "unprepared").prepared_before_today
     end
 
     def completed_success
@@ -93,22 +80,22 @@ class Task < ActiveRecord::Base
       to_complete.where(appeal: appeal)
     end
 
-    def tasks_completed_by_users(tasks)
-      tasks.each_with_object({}) do |task, user_numbers|
-        user_numbers[task.user.full_name] = (user_numbers[task.user.full_name] || 0) + 1
-      end
-    end
-
     # Generic relation method for joining the result of the task
     # ie: EstablishClaim.joins(:claim_establishment)
     def joins_task_result
-      fail MustImplementInSubclassError
+      fail Caseflow::Error::MustImplementInSubclass
+    end
+
+    def todays_quota
+      TeamQuota.find_or_create_by!(date: Time.zone.today, task_type: self)
     end
 
     private
 
     def find_and_assign_next!(user)
-      next_assignable.tap { |task| task && task.assign!(user) }
+      retry_when ActiveRecord::StaleObjectError, limit: 3 do
+        next_assignable.tap { |task| task && task.assign!(user) }
+      end
     end
 
     def next_assignable
@@ -129,6 +116,7 @@ class Task < ActiveRecord::Base
     #  in this state cannot be assigned to users. All tasks are in this state
     #  immediately after creation.
     event :prepare do
+      before :before_prepared
       transitions from: :unprepared, to: :unassigned
     end
 
@@ -139,7 +127,10 @@ class Task < ActiveRecord::Base
     end
 
     event :start do
-      transitions from: :assigned, to: :started, after: :start_time
+      before :before_started
+      success :create_quota!
+
+      transitions from: :assigned, to: :started
     end
 
     # The 'review' state is being used for establish claim tasks to designate that an
@@ -153,7 +144,8 @@ class Task < ActiveRecord::Base
     end
 
     event :complete do
-      before { |*args| assign_completion_attribtues(*args) }
+      before { |*args| assign_completion_attribtues(*args); }
+      success :create_quota!
 
       transitions from: :reviewed, to: :completed
       transitions from: :started, to: :completed
@@ -165,41 +157,26 @@ class Task < ActiveRecord::Base
     end
   end
 
-  def start_time
-    update!(started_at: Time.now.utc)
+  def expire!
+    transaction do
+      complete!(status: :expired)
+      recreate!
+    end
   end
 
   def cancel!(feedback = nil)
-    transaction do
-      update!(comment: feedback)
-      complete!(status: :canceled)
-    end
-  end
+    assign_attributes(comment: feedback)
 
-  def expire!
-    Task.transaction do
-      review! if may_review?
-      complete_and_recreate!(:expired)
-    end
-  end
-
-  def complete_and_recreate!(status_code)
-    transaction do
-      complete!(status: status_code)
-      self.class.create!(appeal_id: appeal_id, type: type)
-    end
+    complete!(status: :canceled)
   end
 
   def progress_status
-    if completed_at
-      "Completed"
-    elsif started_at
-      "In Progress"
-    elsif assigned_at
-      "Not Started"
-    else
-      "Unassigned"
-    end
+    {
+      assigned: "Not Started",
+      started: "In Progress",
+      reviewed: "In Progress",
+      completed: "Completed"
+    }[aasm_state.to_sym] || "Unassigned"
   end
 
   def days_since_creation
@@ -210,12 +187,6 @@ class Task < ActiveRecord::Base
     completion_status ? (COMPLETION_STATUS_TEXT[completion_status.to_sym] || completion_status.titleize) : ""
   end
 
-  def no_open_tasks_for_appeal
-    if self.class.to_complete_task_for_appeal(appeal).count > 0
-      errors.add(:appeal, "Uncompleted task already exists for this appeal")
-    end
-  end
-
   def attributes
     super.merge(type: type)
   end
@@ -223,29 +194,8 @@ class Task < ActiveRecord::Base
   # There are some additional criteria we need to know from our dependencies
   # whether a task is assignable by the current_user.
   def should_assign?
+    before_should_assign
     appeal.can_be_accessed_by_current_user? && !check_and_invalidate!
-  end
-
-  def to_hash_with_bgs_call
-    serializable_hash(
-      include: [:user, appeal: {
-        include: [
-          :pending_eps,
-          :non_canceled_end_products_within_30_days,
-          decisions: { methods: :received_at }
-        ],
-        methods: [
-          :serialized_decision_date,
-          :disposition,
-          :veteran_name,
-          :decision_type,
-          :station_key,
-          :regional_office_key,
-          :issues,
-          :sanitized_vbms_id
-        ] }],
-      methods: [:progress_status, :aasm_state]
-    )
   end
 
   def vbms_id
@@ -253,6 +203,14 @@ class Task < ActiveRecord::Base
   end
 
   private
+
+  # No-op method used for testing purposes
+  def before_should_assign
+  end
+
+  def recreate!
+    self.class.create!(appeal_id: appeal_id, type: type)
+  end
 
   def assign_review_attributes(outgoing_reference_id: nil)
     assign_attributes(outgoing_reference_id: outgoing_reference_id)
@@ -276,8 +234,20 @@ class Task < ActiveRecord::Base
     )
   end
 
+  def before_started
+    assign_attributes(started_at: Time.now.utc)
+  end
+
+  def before_prepared
+    assign_attributes(prepared_at: Time.now.utc)
+  end
+
   def before_invalidation
     assign_attributes(completion_status: :invalidated)
+  end
+
+  def create_quota!
+    self.class.todays_quota.assigned_quotas.find_or_create_by!(user: user)
   end
 
   def check_and_invalidate!
@@ -289,5 +259,11 @@ class Task < ActiveRecord::Base
   # This is a method for determining that. It can be overridden by subclasses.
   def should_invalidate?
     false
+  end
+
+  def no_open_tasks_for_appeal
+    if self.class.to_complete_task_for_appeal(appeal).count > 0
+      errors.add(:appeal, "Uncompleted task already exists for this appeal")
+    end
   end
 end

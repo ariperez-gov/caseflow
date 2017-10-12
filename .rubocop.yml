@@ -41,3 +41,15 @@ Metrics/ClassLength:
 
 Metrics/AbcSize:
   Max: 30
+
+Style/DoubleNegation:
+  Enabled: false
+
+Performance/RedundantBlockCall:
+  Enabled: false
+
+Style/NegatedIf:
+  Enabled: false
+
+Style/EachWithObject:
+  Enabled: false

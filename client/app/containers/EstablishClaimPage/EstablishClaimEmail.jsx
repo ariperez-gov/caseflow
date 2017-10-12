@@ -1,14 +1,21 @@
-import React, { PropTypes } from 'react';
-import BaseForm from '../BaseForm';
+import React from 'react';
+import PropTypes from 'prop-types';
 
+import BaseForm from '../BaseForm';
+import ApiUtil from '../../util/ApiUtil';
+
+import WindowUtil from '../../util/WindowUtil';
 import Checkbox from '../../components/Checkbox';
 import Button from '../../components/Button';
 import TextareaField from '../../components/TextareaField';
+import Alert from '../../components/Alert';
 import FormField from '../../util/FormField';
 import { formatDate } from '../../util/DateUtil';
 import { connect } from 'react-redux';
 import CopyToClipboard from 'react-copy-to-clipboard';
 import SPECIAL_ISSUES from '../../constants/SpecialIssues';
+import * as Constants from '../../establishClaim/constants';
+import { getSpecialIssuesRegionalOfficeCode } from '../../establishClaim/util';
 
 export class EstablishClaimEmail extends BaseForm {
   constructor(props) {
@@ -40,17 +47,23 @@ export class EstablishClaimEmail extends BaseForm {
       ` cannot be processed here, as it contains ${selectedSpecialIssue.join(', ')}` +
       ' in your jurisdiction. Please proceed with control and implement this grant.';
 
-    let note = `This claim for Vet ID #${appeal.sanitized_vbms_id}` +
-      ` includes Special Issue(s): ${selectedSpecialIssue.join(', ')}` +
-      ' not handled by Caseflow';
-
     this.state = {
       emailForm: {
         confirmBox: new FormField(false),
         emailField: new FormField(email)
-      },
-      noEmailNote: note
+      }
     };
+  }
+
+  // For Each Regional Office Mailto Link
+  renderRegionalOfficeEmaillist() {
+    return this.props.regionalOfficeEmail.map((regionalOfficeEmailMailto, index, arr) => {
+      return (
+                  <a key={regionalOfficeEmailMailto} href={`mailto:${regionalOfficeEmailMailto}`}>
+                      {regionalOfficeEmailMailto}{index === arr.length - 1 ? '' : '; '}
+                  </a>
+      );
+    });
   }
 
   render() {
@@ -58,23 +71,21 @@ export class EstablishClaimEmail extends BaseForm {
       { this.props.regionalOfficeEmail &&
         <div>
         <div className="cf-app-segment cf-app-segment--alt">
-          <h2>Route Claim: Send Email Notification</h2>
-          <div>
-            <div className="usa-alert usa-alert-info">
-              <div className="usa-alert-body">
-                <div>
-                  <h3 className="usa-alert-heading">We are unable to create an
-                    EP for claims with this Special Issue</h3>
-                  <p className="usa-alert-text">
-                    Follow the instructions below to route this claim.
-                  </p>
-                </div>
-              </div>
-            </div>
+          <h1>Route Claim</h1>
+            <h2>Send Email Notification</h2>
+          <div className="cf-email-header">
+            <Alert
+              title="We are unable to create an
+                EP for claims with this Special Issue"
+              type="info">
+              Follow the instructions below to route this claim.
+            </Alert>
             <p>Please send the following email message to the office
               responsible for implementing this grant.</p>
-            <p><b>RO:</b> {this.props.regionalOffice}</p>
-            <p><b>RO email:</b> {this.props.regionalOfficeEmail.join('; ')}</p>
+            <aside>
+              <p><b>RO:</b> {this.props.regionalOffice}</p>
+              <p><b>RO email:</b> {this.renderRegionalOfficeEmaillist()}</p>
+            </aside>
           </div>
 
           <div className ="cf-vbms-note">
@@ -99,12 +110,15 @@ export class EstablishClaimEmail extends BaseForm {
             </div>
           </div>
 
+          <div className="route-claim-confirmNote-wrapper">
           <Checkbox
               label="I confirm that I have sent an email to route this claim."
               name="confirmEmail"
               onChange={this.handleFieldChange('emailForm', 'confirmBox')}
               {...this.state.emailForm.confirmBox}
+              required={true}
           />
+         </div>
 
         </div>
 
@@ -119,7 +133,7 @@ export class EstablishClaimEmail extends BaseForm {
           <div className="cf-push-right">
             <Button
             name="Cancel"
-            onClick={this.props.handleCancelTask}
+            onClick={this.props.handleToggleCancelTaskModal}
             classNames={['cf-btn-link', 'cf-adjacent-buttons']}
             />
             <Button
@@ -134,79 +148,62 @@ export class EstablishClaimEmail extends BaseForm {
         </div>
       </div>
       }
-      { !this.props.regionalOfficeEmail &&
-        <div>
-          <div className="cf-app-segment cf-app-segment--alt">
-            <h2>Route Claim: Process Outside of Caseflow</h2>
-            <div>
-              <div className="usa-alert usa-alert-warning">
-                <div className="usa-alert-body">
-                  <div>
-                    <h3 className="usa-alert-heading">{this.state.noEmailNote}</h3>
-                  </div>
-                </div>
-              </div>
-              <p>You selected a Special Issue Category that cannot be processed
-                in Caseflow at this time.</p>
-              <p>Please process this claim manually and select Release Claim
-                when you are finished.</p>
-            </div>
-            <Checkbox
-                label="I confirm that I have processed this claim outside of Caseflow."
-                name="confirmEmail"
-                onChange={this.handleFieldChange('emailForm', 'confirmBox')}
-                {...this.state.emailForm.confirmBox}
-            />
-          </div>
-          <div className="cf-app-segment" id="establish-claim-buttons">
-            <div className="cf-push-left">
-              <Button
-                name={this.props.backToDecisionReviewText}
-                onClick={this.props.handleBackToDecisionReview}
-                classNames={['cf-btn-link']}
-              />
-            </div>
-            <div className="cf-push-right">
-              <Button
-                  name="Cancel"
-                  onClick={this.props.handleCancelTask}
-                  classNames={['cf-btn-link', 'cf-adjacent-buttons']}
-              />
-              <Button
-                  app="dispatch"
-                  name="Release claim"
-                  classNames={['usa-button-secondary']}
-                  disabled={!this.state.emailForm.confirmBox.value}
-                  onClick={this.props.handleNoEmailSubmit}
-                  loading={this.props.loading}
-              />
-            </div>
-          </div>
-        </div>
-      }
-      </div>;
+    </div>;
   }
 }
 
 EstablishClaimEmail.propTypes = {
   appeal: PropTypes.object.isRequired,
-  handleCancelTask: PropTypes.func.isRequired,
+  handleToggleCancelTaskModal: PropTypes.func.isRequired,
   handleBackToDecisionReview: PropTypes.func.isRequired,
   backToDecisionReviewText: PropTypes.string.isRequired,
   handleEmailSubmit: PropTypes.func.isRequired,
-  handleNoEmailSubmit: PropTypes.func.isRequired,
   regionalOffice: PropTypes.string,
   regionalOfficeEmail: PropTypes.arrayOf(PropTypes.string)
 };
 
-const mapStateToProps = (state) => {
-  return {
-    specialIssues: state.specialIssues
-  };
-};
+const mapStateToProps = (state) => ({
+  specialIssues: state.specialIssues,
+  loading: state.establishClaim.loading
+});
+
+const mapDispatchToProps = (dispatch, ownProps) => ({
+  handleToggleCancelTaskModal: () => {
+    dispatch({ type: Constants.TOGGLE_CANCEL_TASK_MODAL });
+  },
+  handleEmailSubmit: () => {
+    ownProps.handleAlertClear();
+    dispatch({ type: Constants.TRIGGER_LOADING,
+      payload: { value: true } });
+
+    const emailRoId = getSpecialIssuesRegionalOfficeCode(
+      ownProps.specialIssuesRegionalOffice,
+      ownProps.appeal.regional_office_key
+    );
+
+    const data = ApiUtil.convertToSnakeCase({
+      emailRoId,
+      emailRecipient: ownProps.regionalOfficeEmail.join(', ')
+    });
+
+    return ApiUtil.post(`/dispatch/establish-claim/${ownProps.taskId}/email-complete`, { data }).
+      then(() => {
+        WindowUtil.reloadPage();
+      }, () => {
+        ownProps.handleAlert(
+          'error',
+          'Error',
+          'There was an error while completing the task. Please try again later'
+        );
+        dispatch({ type: Constants.TRIGGER_LOADING,
+          payload: { value: false } });
+      });
+  }
+});
 
 const ConnectedEstablishClaimEmail = connect(
-    mapStateToProps
+  mapStateToProps,
+  mapDispatchToProps
 )(EstablishClaimEmail);
 
 export default ConnectedEstablishClaimEmail;

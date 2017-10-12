@@ -26,6 +26,10 @@ class EstablishClaim < Task
     appeal.serialized_decision_date
   end
 
+  cache_attribute :cached_outcoded_by do
+    appeal.outcoded_by_name
+  end
+
   def to_hash
     serializable_hash(
       include: [:user],
@@ -36,8 +40,33 @@ class EstablishClaim < Task
         :cached_decision_type,
         :cached_veteran_name,
         :cached_serialized_decision_date,
+        :cached_outcoded_by,
         :vbms_id
       ]
+    )
+  end
+
+  # Used when processing the task.
+  # Makes calls to BGS, which can make it much slower.
+  def to_hash_with_bgs_call
+    serializable_hash(
+      include: [:user, appeal: {
+        include: [
+          :pending_eps,
+          :non_canceled_end_products_within_30_days,
+          decisions: { methods: :received_at }
+        ],
+        methods: [
+          :serialized_decision_date,
+          :disposition,
+          :veteran_name,
+          :decision_type,
+          :station_key,
+          :regional_office_key,
+          :issues,
+          :sanitized_vbms_id
+        ] }],
+      methods: [:progress_status, :aasm_state]
     )
   end
 
@@ -118,8 +147,15 @@ class EstablishClaim < Task
     end
   end
 
+  def bgs_info_valid?
+    appeal.veteran.valid?
+  end
+
   def should_invalidate?
-    !appeal.vacols_record_exists? || !appeal.decision_date || appeal.status == "Active"
+    !appeal.vacols_record_exists? ||
+      !appeal.decision_date ||
+      !appeal.decision_type ||
+      appeal.status == "Active"
   end
 
   private
@@ -129,7 +165,12 @@ class EstablishClaim < Task
     return :already_prepared unless may_prepare?
     return :missing_decision if appeal.decisions.empty?
 
-    appeal.decisions.each(&:fetch_and_cache_document_from_vbms)
+    begin
+      appeal.decisions.each(&:fetch_and_cache_document_from_vbms)
+    rescue VBMS::ClientError => e
+      Rails.logger.info "Failed EstablishClaim (id = #{id}), Error: #{e}"
+      return :failed
+    end
 
     prepare! && :success
   end
@@ -148,7 +189,7 @@ class EstablishClaim < Task
   end
 
   def establish_claim_in_vbms(end_product)
-    Appeal.repository.establish_claim!(
+    VBMSService.establish_claim!(
       claim_hash: end_product.to_vbms_hash,
       veteran_hash: appeal.veteran.to_vbms_hash
     )
@@ -259,6 +300,10 @@ class EstablishClaim < Task
 
     def joins_task_result
       joins(:claim_establishment)
+    end
+
+    def past_weeks(num)
+      where("completed_at >= ?", Time.zone.today - num.weeks)
     end
   end
 end

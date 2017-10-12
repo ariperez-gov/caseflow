@@ -1,8 +1,10 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 import TextField from '../../components/TextField';
 import Checkbox from '../../components/Checkbox';
 import Button from '../../components/Button';
-import { formatDate, addDays } from '../../util/DateUtil';
+import Alert from '../../components/Alert';
+import { dateFormatString } from '../../util/DateUtil';
 import StringUtil from '../../util/StringUtil';
 import SPECIAL_ISSUES from '../../constants/SpecialIssues';
 import Table from '../../components/Table';
@@ -10,6 +12,8 @@ import TabWindow from '../../components/TabWindow';
 import LoadingContainer from '../../components/LoadingContainer';
 import { connect } from 'react-redux';
 import * as Constants from '../../establishClaim/constants';
+import moment from 'moment';
+import * as AppConstants from '../../constants/AppConstants';
 
 export class EstablishClaimDecision extends React.Component {
   constructor(props) {
@@ -41,7 +45,7 @@ export class EstablishClaimDecision extends React.Component {
       loading,
       decisionType,
       handleSubmit,
-      handleCancelTask,
+      handleToggleCancelTaskModal,
       handleSpecialIssueFieldChange,
       pdfLink,
       pdfjsLink,
@@ -68,13 +72,13 @@ export class EstablishClaimDecision extends React.Component {
       }
     ];
 
-    let decisionDateStart = formatDate(
-      addDays(new Date(task.appeal.serialized_decision_date), -3)
-    );
+    let decisionDateStart = moment(task.appeal.serialized_decision_date).
+      add(-3, 'days').
+      format(dateFormatString);
 
-    let decisionDateEnd = formatDate(
-      addDays(new Date(task.appeal.serialized_decision_date), 3)
-    );
+    let decisionDateEnd = moment(task.appeal.serialized_decision_date).
+      add(3, 'days').
+      format(dateFormatString);
 
     // Sort in reverse chronological order
     let decisions = task.appeal.decisions.sort((decision1, decision2) =>
@@ -85,7 +89,8 @@ export class EstablishClaimDecision extends React.Component {
 
       tab.disable = false;
 
-      tab.label = `Decision ${(index + 1)} (${formatDate(decision.received_at)})`;
+      tab.label = `Decision ${(index + 1)} ` +
+        `(${moment(decision.received_at).format(dateFormatString)})`;
 
       /* This link is here for 508 compliance, and shouldn't be visible to sighted
         users. We need to allow non-sighted users to preview the Decision. Adobe Acrobat
@@ -111,7 +116,7 @@ export class EstablishClaimDecision extends React.Component {
            establish-claim buttons.
          </a>
          <div>
-           <LoadingContainer>
+           <LoadingContainer color={AppConstants.LOADING_INDICATOR_COLOR_DISPATCH}>
              <iframe
                aria-label="The PDF embedded here is not accessible. Please use the above
                  link to download the PDF and view it in a PDF reader. Then use the
@@ -131,21 +136,16 @@ export class EstablishClaimDecision extends React.Component {
     return (
       <div>
         <div className="cf-app-segment cf-app-segment--alt">
-          <h2>Review Decision</h2>
+          <h1>Review Decision</h1>
           Review the final decision from VBMS below to determine the next step.
-          {this.hasMultipleDecisions() && <div className="usa-alert usa-alert-warning">
-            <div className="usa-alert-body">
-              <div>
-                <h3 className="usa-alert-heading">Multiple Decision Documents</h3>
-                <p className="usa-alert-text">
-                  We found more than one decision document for the dispatch date
-                  range {decisionDateStart} - {decisionDateEnd}.
-                  Please review the decisions in the tabs below and select the document
-                  that best fits the decision criteria for this case.
-                </p>
-              </div>
-            </div>
-          </div>}
+          {this.hasMultipleDecisions() && <Alert
+            title="Multiple Decision Documents"
+            type="warning">
+            We found more than one decision document for the dispatch date
+            range {decisionDateStart} - {decisionDateEnd}.
+            Please review the decisions in the tabs below and select the document
+            that best fits the decision criteria for this case.
+          </Alert>}
         </div>
         {this.hasMultipleDecisions() &&
           <div className="cf-app-segment cf-app-segment--alt">
@@ -181,7 +181,7 @@ export class EstablishClaimDecision extends React.Component {
              label="Decision type"
              name="decisionType"
              readOnly={true}
-             {...decisionType}
+             value={decisionType}
             />
           </div>
 
@@ -206,7 +206,7 @@ export class EstablishClaimDecision extends React.Component {
           <div className="cf-push-right">
             <Button
                 name="Cancel"
-                onClick={handleCancelTask}
+                onClick={handleToggleCancelTaskModal}
                 classNames={['cf-btn-link', 'cf-adjacent-buttons']}
             />
             <Button
@@ -223,8 +223,8 @@ export class EstablishClaimDecision extends React.Component {
 }
 
 EstablishClaimDecision.propTypes = {
-  decisionType: PropTypes.object.isRequired,
-  handleCancelTask: PropTypes.func.isRequired,
+  decisionType: PropTypes.string.isRequired,
+  handleToggleCancelTaskModal: PropTypes.func.isRequired,
   handleSubmit: PropTypes.func.isRequired,
   pdfLink: PropTypes.string.isRequired,
   pdfjsLink: PropTypes.string.isRequired,
@@ -232,25 +232,24 @@ EstablishClaimDecision.propTypes = {
   task: PropTypes.object.isRequired
 };
 
-const mapStateToProps = (state) => {
-  return {
-    specialIssues: state.specialIssues
-  };
-};
+const mapStateToProps = (state) => ({
+  specialIssues: state.specialIssues
+});
 
-const mapDispatchToProps = (dispatch) => {
-  return {
-    handleSpecialIssueFieldChange: (specialIssue) => (value) => {
-      dispatch({
-        type: Constants.CHANGE_SPECIAL_ISSUE,
-        payload: {
-          specialIssue,
-          value
-        }
-      });
-    }
-  };
-};
+const mapDispatchToProps = (dispatch) => ({
+  handleToggleCancelTaskModal: () => {
+    dispatch({ type: Constants.TOGGLE_CANCEL_TASK_MODAL });
+  },
+  handleSpecialIssueFieldChange: (specialIssue) => (value) => {
+    dispatch({
+      type: Constants.CHANGE_SPECIAL_ISSUE,
+      payload: {
+        specialIssue,
+        value
+      }
+    });
+  }
+});
 
 const ConnectedEstablishClaimDecision = connect(
     mapStateToProps,

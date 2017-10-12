@@ -1,6 +1,6 @@
 source ENV['GEM_SERVER_URL'] || 'https://rubygems.org'
 
-gem "caseflow", git: "https://github.com/department-of-veterans-affairs/caseflow-commons", ref: "8033c11"
+gem "caseflow", git: "https://github.com/department-of-veterans-affairs/caseflow-commons", ref: "706ba7bde215f53d96365e3dba217f9a98781f4e"
 
 gem "moment_timezone-rails"
 
@@ -18,12 +18,17 @@ gem 'uglifier', '>= 1.3.0'
 gem 'jquery-rails'
 
 # React
-gem "react_on_rails", "~> 6.8.0"
+gem "react_on_rails", "8.0.6"
 
 # Build JSON APIs with ease. Read more: https://github.com/rails/jbuilder
 gem 'jbuilder', '~> 2.0'
 # bundle exec rake doc:rails generates the API under doc/api.
 gem 'sdoc', '~> 0.4.0', group: :doc
+
+gem 'active_model_serializers', '~> 0.10.0'
+
+# soft delete gem
+gem "paranoia", "~> 2.2"
 
 # Use ActiveModel has_secure_password
 # gem 'bcrypt', '~> 3.1.7'
@@ -40,7 +45,7 @@ gem 'wannabe_bool'
 gem "uswds-rails", git: "https://github.com/18F/uswds-rails-gem.git"
 
 # BGS
-gem 'bgs', git: "https://github.com/department-of-veterans-affairs/ruby-bgs.git", ref: '68f7431a3e642ed41da5ff6568aa9d45c11e6aca'
+gem 'bgs', git: "https://github.com/department-of-veterans-affairs/ruby-bgs.git", ref: 'a9041f859632ccd32cf8e3a22554505d6baa4276'
 
 # PDF Tools
 gem 'pdf-forms'
@@ -61,7 +66,7 @@ gem 'therubyracer', platforms: :ruby
 
 gem 'pg', platforms: :ruby
 
-gem 'connect_vbms', git: "https://github.com/department-of-veterans-affairs/connect_vbms.git", ref: "f561599c8b68806ae838530b2fc02d481157b02a"
+gem 'connect_vbms', git: "https://github.com/department-of-veterans-affairs/connect_vbms.git", ref: "dd26fbff2179d400b4f19f91084835686276297f"
 
 gem 'redis-rails'
 
@@ -71,7 +76,7 @@ gem "sidekiq-cron", "~> 0.4.0"
 # remove when upgrading to rails 5
 gem 'where-or'
 
-gem 'prometheus-client'
+gem 'prometheus-client', "~> 0.6"
 
 gem 'request_store'
 
@@ -81,6 +86,9 @@ gem 'aasm', '4.11.0'
 gem 'font-awesome-sass'
 
 gem 'redis-namespace'
+
+# catch problematic migrations at development/test time
+gem "zero_downtime_migrations"
 
 group :production, :staging do
   # Oracle DB
@@ -108,27 +116,27 @@ group :development, :test do
   gem 'bundler-audit'
 
   # Testing tools
+  gem 'faker'
   gem 'rspec'
   gem 'rspec-rails'
   #gem 'guard-rspec', '4.7.1' # removed because downstream dep requires ruby 2.5
   gem 'capybara'
-  gem 'sniffybara', git: 'https://github.com/department-of-veterans-affairs/sniffybara.git', branch: "selenium"
-  gem 'simplecov', '0.12.0', require: false
+  gem 'sniffybara', git: 'https://github.com/department-of-veterans-affairs/sniffybara.git', branch: "master"
+  gem 'simplecov', git: 'https://github.com/colszowka/simplecov.git', require: false
   gem 'timecop'
 
   gem 'poltergeist' # For legacy JS tests. Remove when we're all React
   gem 'konacha'
   gem 'database_cleaner'
-  gem 'parallel_tests'
   # to save and open specific page in capybara tests
   gem 'launchy'
-  # catch problematic migrations at development/test time
-  gem "zero_downtime_migrations"
 end
 
 group :development do
   # Access an IRB console on exception pages or by using <%= console %> in views
   gem 'web-console', '~> 2.0', platforms: :ruby
+  gem 'foreman'
+  gem 'dotenv-rails'
 
   # Spring speeds up development by keeping your application running in the background. Read more: https://github.com/rails/spring
   # gem 'spring', platforms: :ruby
@@ -137,3 +145,5 @@ group :development do
   # POSIX systems should have this already, so we're not going to bring it in on other platforms
   gem 'tzinfo-data', platforms: [:mingw, :mswin, :x64_mingw, :jruby]
 end
+
+gem 'shoryuken', '3.1.11'

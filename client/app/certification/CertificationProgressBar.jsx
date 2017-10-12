@@ -1,11 +1,12 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import ProgressBar from '../components/ProgressBar';
 import { progressBarSections } from './constants/constants';
 
 
 // TODO: use the redux store to grab data and render this.
-class UnconnectedCertificationProgressBar extends React.Component {
+export class CertificationProgressBar extends React.Component {
   static sections() {
     return [
       {
@@ -30,7 +31,7 @@ class UnconnectedCertificationProgressBar extends React.Component {
   deriveSections() {
     const currentSection = this.props.currentSection;
 
-    return UnconnectedCertificationProgressBar.sections().map((section) => {
+    return CertificationProgressBar.sections().map((section) => {
       return {
         title: section.title,
         current: section.value === currentSection
@@ -39,20 +40,24 @@ class UnconnectedCertificationProgressBar extends React.Component {
   }
 
   render() {
-    return <ProgressBar sections={this.deriveSections()}/>;
+
+    let showProgressBar = !this.props.serverError;
+
+    return <div>
+      { showProgressBar && <ProgressBar sections={this.deriveSections()}/> }
+      </div>;
   }
 }
 
 const mapStateToProps = (state) => ({
-  currentSection: state.currentSection
+  currentSection: state.currentSection,
+  serverError: state.serverError
 });
 
-const CertificationProgressBar = connect(
+export default connect(
   mapStateToProps
-)(UnconnectedCertificationProgressBar);
+)(CertificationProgressBar);
 
 CertificationProgressBar.propTypes = {
   currentSection: PropTypes.string
 };
-
-export default CertificationProgressBar;

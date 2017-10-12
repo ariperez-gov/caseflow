@@ -10,20 +10,16 @@ class Fakes::AuthenticationService
     user = User.find(user_id)
     # Take the roles from the User's css_id
     roles = user.css_id.split(",").map(&:strip)
-    admin_roles = roles.include?("System Admin") ? ["System Admin"] : []
+    if roles.include?("System Admin")
+      Functions.grant!("System Admin", users: [user.css_id])
+    end
     {
       "id" => user.css_id,
+      "css_id" => user.css_id,
       "roles" => roles,
       "station_id" => user.station_id,
-      "name" => user.full_name,
-      "admin_roles" => admin_roles
+      "name" => user.full_name
     }
-  end
-
-  def self.authenticate_vacols(regional_office, password)
-    normalized_ro = find_ro(regional_office)
-    actual_password = vacols_regional_offices[normalized_ro]
-    actual_password == password
   end
 
   def self.find_ro(regional_office)

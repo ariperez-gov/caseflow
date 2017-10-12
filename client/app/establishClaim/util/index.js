@@ -1,9 +1,6 @@
 import SPECIAL_ISSUES from '../../constants/SpecialIssues';
-import {
-  FULL_GRANT,
-  FULL_GRANT_MODIFIER_OPTIONS,
-  PARTIAL_GRANT_MODIFIER_OPTIONS
-} from '../constants';
+import { MODIFIER_OPTIONS } from '../constants';
+import ROUTING_INFORMATION from '../../constants/Routing';
 
 /*
  * This function returns a nicely formatted string for the station of jurisdiction
@@ -43,19 +40,12 @@ export const formattedStationOfJurisdiction = (
 };
 
 /*
- * This function gets the set of unused modifiers. For a full grant, only one
- * modifier, 172, is valid. For partial grants, 170, 171, 175, 176, 177, 178, 179
- * are all potentially valid. This removes any modifiers that have already been
+ * This function gets the set of unused modifiers.
+ * This removes any modifiers that have already been
  * used in previous EPs.
  */
-export const validModifiers = (endProducts, decisionType) => {
-  let modifiers = [];
-
-  if (decisionType === FULL_GRANT) {
-    modifiers = FULL_GRANT_MODIFIER_OPTIONS;
-  } else {
-    modifiers = PARTIAL_GRANT_MODIFIER_OPTIONS;
-  }
+export const validModifiers = (endProducts) => {
+  let modifiers = MODIFIER_OPTIONS;
 
   let modifierHash = endProducts.reduce((modifierObject, endProduct) => {
     modifierObject[endProduct.end_product_type_code] = true;
@@ -64,4 +54,54 @@ export const validModifiers = (endProducts, decisionType) => {
   }, {});
 
   return modifiers.filter((modifier) => !modifierHash[modifier]);
+};
+
+const getRegionalOfficeString = (regionalOfficeKey, regionalOfficeCities) => {
+  if (!regionalOfficeKey) {
+    return null;
+  }
+
+  return `${regionalOfficeKey} - ${
+      regionalOfficeCities[regionalOfficeKey].city}, ${
+      regionalOfficeCities[regionalOfficeKey].state}`;
+};
+
+const getEmailFromConstant = (constant, regionalOfficeKey) => {
+  return ROUTING_INFORMATION.codeToEmailMapper[constant[regionalOfficeKey]];
+};
+
+export const getSpecialIssuesRegionalOfficeCode = (specialIssuesRegionalOffice, regionalOfficeKey) => {
+  switch (specialIssuesRegionalOffice) {
+  case 'PMC':
+    return ROUTING_INFORMATION.PMC[regionalOfficeKey];
+  case 'COWC':
+    return ROUTING_INFORMATION.COWC[regionalOfficeKey];
+  case 'education':
+    return ROUTING_INFORMATION.EDUCATION[regionalOfficeKey];
+  default:
+    return specialIssuesRegionalOffice;
+  }
+};
+
+// This method returns a string version of the regional office code. So it takes "R081"
+// and returns a string "RO81 - Philadelphia Pension Center, PA"
+export const getSpecialIssuesRegionalOffice =
+  (specialIssuesRegionalOffice, regionalOfficeKey, regionalOfficeCities) => {
+    return getRegionalOfficeString(
+      getSpecialIssuesRegionalOfficeCode(specialIssuesRegionalOffice, regionalOfficeKey),
+      regionalOfficeCities
+    );
+  };
+
+export const getSpecialIssuesEmail = (specialIssuesEmail, regionalOfficeKey) => {
+  switch (specialIssuesEmail) {
+  case 'PMC':
+    return getEmailFromConstant(ROUTING_INFORMATION.PMC, regionalOfficeKey);
+  case 'COWC':
+    return getEmailFromConstant(ROUTING_INFORMATION.COWC, regionalOfficeKey);
+  case 'education':
+    return getEmailFromConstant(ROUTING_INFORMATION.EDUCATION, regionalOfficeKey);
+  default:
+    return specialIssuesEmail;
+  }
 };

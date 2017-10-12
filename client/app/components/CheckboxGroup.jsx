@@ -1,4 +1,5 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 
 export default class CheckboxGroup extends React.Component {
 
@@ -64,7 +65,7 @@ CheckboxGroup.defaultProps = {
 };
 
 CheckboxGroup.propTypes = {
-  label: PropTypes.string,
+  label: PropTypes.node,
   hideLabel: PropTypes.bool,
   name: PropTypes.string.isRequired,
   options: PropTypes.arrayOf(

@@ -1,4 +1,5 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 
 export default class Checkbox extends React.Component {
   onChange = (event) => {
@@ -11,6 +12,8 @@ export default class Checkbox extends React.Component {
       name,
       required,
       value,
+      disabled,
+      id,
       errorMessage
     } = this.props;
 
@@ -32,8 +35,9 @@ export default class Checkbox extends React.Component {
           name={name}
           onChange={this.onChange}
           type="checkbox"
-          id={name}
+          id={id || name}
           checked={value}
+          disabled={disabled}
         />
         <label className="question-label" htmlFor={name}>
           {label || name} {required && <span className="cf-required">Required</span>}
@@ -51,5 +55,6 @@ Checkbox.propTypes = {
   name: PropTypes.string.isRequired,
   onChange: PropTypes.func.isRequired,
   required: PropTypes.bool.isRequired,
+  disabled: PropTypes.bool,
   value: PropTypes.bool
 };

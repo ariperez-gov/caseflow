@@ -4,6 +4,26 @@ require "prometheus/client/push"
 class PrometheusService
   # :nocov:
   class << self
+    def efolder_request_attempt_counter
+      @efolder_request_attempt_counter ||=
+        find_or_register_metric(:counter,
+                                :efolder_request_attempt_counter,
+                                "A counter of attempted eFolder requests")
+    end
+
+    def efolder_request_error_counter
+      @efolder_request_error_counter ||=
+        find_or_register_metric(:counter,
+                                :efolder_request_error_counter,
+                                "A counter of errored eFolder requests")
+    end
+
+    def efolder_request_latency
+      @efolder_request_latency ||=
+        find_or_register_gauge_and_summary(:efolder_request_latency,
+                                           "latency of completed eFolder requests")
+    end
+
     def vbms_request_attempt_counter
       @vbms_request_attempt_counter ||=
         find_or_register_metric(:counter,
@@ -107,6 +127,7 @@ class PrometheusService
       metrics = Prometheus::Client.registry
       url = Rails.application.secrets.prometheus_push_gateway_url
 
+      return unless url
       Prometheus::Client::Push.new("push-gateway", nil, url).add(metrics)
     end
 
@@ -134,6 +155,9 @@ end
 # and a summary. This class provides a simple `.set()` interface
 # for updating both at the same time
 class PrometheusGaugeSummary
+  LAST_SUMMARY_OBSERVATION_REDIS_KEY_PREFIX = "prometheus_last_summary_observation".freeze
+  SUMMARY_OBSERVATION_THRESHOLD = 1.minute
+
   attr_accessor :gauge, :summary
   def initialize(gauge, summary)
     @gauge = gauge
@@ -142,6 +166,29 @@ class PrometheusGaugeSummary
 
   def set(label, value)
     gauge.set(label, value)
+    record_summary_observation(label, value) if should_observe_summary?
+  end
+
+  def last_summary_observation
+    Rails.cache.read(last_summary_observation_redis_key) || Time.at(0).utc
+  end
+
+  private
+
+  def last_summary_observation_redis_key
+    "#{LAST_SUMMARY_OBSERVATION_REDIS_KEY_PREFIX}_#{summary.name}"
+  end
+
+  def record_summary_observation(label, value)
     summary.observe(label, value)
+    set_last_summary_observation
+  end
+
+  def set_last_summary_observation
+    Rails.cache.write(last_summary_observation_redis_key, Time.now.utc)
+  end
+
+  def should_observe_summary?
+    Time.now.utc > (last_summary_observation + SUMMARY_OBSERVATION_THRESHOLD)
   end
 end

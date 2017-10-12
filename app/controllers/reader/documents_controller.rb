@@ -1,12 +1,37 @@
-class Reader::DocumentsController < ApplicationController
-  before_action :verify_access
+class Reader::DocumentsController < Reader::ApplicationController
+  def index
+    respond_to do |format|
+      format.html { return render(:index) }
+      format.json do
+        AppealView.find_or_create_by(
+          appeal_id: appeal.id,
+          user_id: current_user.id).tap do |t|
+          t.update!(last_viewed_at: Time.zone.now)
+        end
+        MetricsService.record "Get appeal #{appeal_id} document data" do
+          render json: {
+            appealDocuments: documents,
+            annotations: annotations
+          }
+        end
+      end
+    end
+  end
+
+  def show
+    render(:index)
+  end
 
   private
 
   def appeal
-    Appeal.find_or_create_by_vacols_id(appeal_id)
+    @appeal ||= Appeal.find_or_create_by_vacols_id(appeal_id)
   end
   helper_method :appeal
+
+  def annotations
+    appeal.saved_documents.flat_map(&:annotations).map(&:to_hash)
+  end
 
   def documents
     document_ids = appeal.saved_documents.map(&:id)
@@ -20,33 +45,12 @@ class Reader::DocumentsController < ApplicationController
     @documents = appeal.saved_documents.map do |document|
       document.to_hash.tap do |object|
         object[:opened_by_current_user] = read_documents_hash[document.id] || false
+        object[:tags] = document.tags
       end
     end
-  end
-  helper_method :documents
-
-  def single_document
-    Document.find(params[:id]).tap do |t|
-      t.filename = params[:filename]
-      t.type = params[:type]
-      t.received_at = params[:received_at]
-    end
-  end
-  helper_method :single_document
-
-  def logo_name
-    "Reader"
   end
 
   def appeal_id
     params[:appeal_id]
-  end
-
-  def logo_path
-    reader_appeal_documents_path(appeal_id: appeal_id)
-  end
-
-  def verify_access
-    verify_authorized_roles("Reader")
   end
 end

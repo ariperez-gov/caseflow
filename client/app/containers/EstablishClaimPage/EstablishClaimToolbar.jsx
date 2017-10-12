@@ -1,4 +1,6 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
+
 import Button from '../../components/Button';
 import ApiUtil from '../../util/ApiUtil';
 
@@ -44,6 +46,7 @@ export default class EstablishClaimToolbar extends React.Component {
           name={buttonText}
           onClick={this.establishNextClaim}
           classNames={['usa-button-primary', 'cf-push-right']}
+          disabled={totalCasesCompleted >= casesAssigned}
           loading={this.state.loading}
         />
       </div>;

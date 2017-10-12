@@ -1,11 +1,16 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 import { connect } from 'react-redux';
 import * as Constants from './constants/constants';
+import * as certificationActions from './actions/Certification';
+import * as actions from './actions/ConfirmHearing';
+import { Redirect } from 'react-router-dom';
 
+import ValidatorsUtil from '../util/ValidatorsUtil';
 import Footer from './Footer';
 import LoadingContainer from '../components/LoadingContainer';
 import RadioField from '../components/RadioField';
-
+import * as AppConstants from '../constants/AppConstants';
 
 // TODO: how should we organize content?
 // one school of thought is to put content
@@ -27,19 +32,19 @@ in the document you found?`;
 const hearingChangeFoundAnswers = [
   {
     displayText: 'They cancelled their hearing request.',
-    value: Constants.hearingTypes.HEARING_CANCELLED
+    value: Constants.hearingPreferences.HEARING_CANCELLED
   },
   {
     displayText: 'They requested a board hearing via videoconference.',
-    value: Constants.hearingTypes.VIDEO
+    value: Constants.hearingPreferences.VIDEO
   },
   {
     displayText: 'They requested a board hearing in Washington, DC.',
-    value: Constants.hearingTypes.WASHINGTON_DC
+    value: Constants.hearingPreferences.WASHINGTON_DC
   },
   {
     displayText: 'They requested a board hearing at a local VA office.',
-    value: Constants.hearingTypes.TRAVEL_BOARD
+    value: Constants.hearingPreferences.TRAVEL_BOARD
   }
 ];
 
@@ -59,19 +64,19 @@ Board Hearing question above? Depending on the Form 9, this may be Question 8
 or Question 10.`;
 const formalForm9HearingAnswers = [{
   displayText: 'A. I do not want an optional board hearing',
-  value: Constants.hearingTypes.NO_HEARING_DESIRED
+  value: Constants.hearingPreferences.NO_HEARING_DESIRED
 }, {
   displayText: 'B. I want a hearing by videoconference at a local VA office.',
-  value: Constants.hearingTypes.VIDEO
+  value: Constants.hearingPreferences.VIDEO
 }, {
   displayText: 'C. I want a hearing in Washington, DC.',
-  value: Constants.hearingTypes.WASHINGTON_DC
+  value: Constants.hearingPreferences.WASHINGTON_DC
 }, {
   displayText: 'D. I want a hearing at a local VA office.',
-  value: Constants.hearingTypes.TRAVEL_BOARD
+  value: Constants.hearingPreferences.TRAVEL_BOARD
 }, {
   displayText: 'No box selected.',
-  value: Constants.hearingTypes.HEARING_TYPE_NOT_SPECIFIED
+  value: Constants.hearingPreferences.NO_BOX_SELECTED
 }];
 
 const informalForm9HearingQuestion = `What optional board hearing preference,
@@ -79,20 +84,26 @@ if any, did the appellant request?`;
 const informalForm9HearingAnswers = [{
   displayText: `Does not want an optional board hearing
   or did not mention a board hearing.`,
-  value: Constants.hearingTypes.NO_HEARING_DESIRED
+  value: Constants.hearingPreferences.NO_HEARING_DESIRED
 }, {
   displayText: 'Wants a board hearing and did not specify what type.',
-  value: Constants.hearingTypes.HEARING_TYPE_NOT_SPECIFIED
+  value: Constants.hearingPreferences.HEARING_TYPE_NOT_SPECIFIED
 }, {
   displayText: 'Wants a board hearing by videoconference.',
-  value: Constants.hearingTypes.VIDEO
+  value: Constants.hearingPreferences.VIDEO
 }, {
   displayText: 'Wants a board hearing in Washington, DC.',
-  value: Constants.hearingTypes.WASHINGTON_DC
+  value: Constants.hearingPreferences.WASHINGTON_DC
 }, {
   displayText: 'Wants a board hearing at their regional office.',
-  value: Constants.hearingTypes.TRAVEL_BOARD
+  value: Constants.hearingPreferences.TRAVEL_BOARD
 }];
+
+const ERRORS = {
+  hearingDocumentIsInVbms: 'Please select yes or no.',
+  hearingPreference: 'Please select a hearing preference.',
+  form9Type: 'Please select Form 9 or a statement.'
+};
 
 /*
 * Check the Veteran's hearing request in VBMS and update it in VACOLS.
@@ -109,7 +120,7 @@ const informalForm9HearingAnswers = [{
  */
 // TODO: refactor to use shared components where helpful
 
-class UnconnectedConfirmHearing extends React.Component {
+export class ConfirmHearing extends React.Component {
   // TODO: updating state in ComponentWillMount is
   // sometimes thought of as an anti-pattern.
   // is there a better way to do this?
@@ -117,23 +128,115 @@ class UnconnectedConfirmHearing extends React.Component {
     this.props.updateProgressBar();
   }
 
+  componentWillUnmount() {
+    this.props.resetState();
+  }
+
+  /* eslint class-methods-use-this: ["error", { "exceptMethods": ["componentDidMount"] }] */
+  componentDidMount() {
+    window.scrollTo(0, 0);
+  }
+
+  /* eslint-disable max-statements */
+  getValidationErrors() {
+    let {
+      hearingDocumentIsInVbms,
+      hearingPreference,
+      form9Type
+    } = this.props;
+
+    const erroredFields = [];
+
+    if (!hearingDocumentIsInVbms) {
+      erroredFields.push('hearingDocumentIsInVbms');
+    }
+
+    if (!hearingPreference && hearingDocumentIsInVbms === Constants.vbmsHearingDocument.FOUND) {
+      erroredFields.push('hearingPreference');
+    }
+
+    if (hearingDocumentIsInVbms === Constants.vbmsHearingDocument.NOT_FOUND && !form9Type) {
+      erroredFields.push('form9Type');
+    }
+
+    if (form9Type === Constants.form9Types.FORMAL_FORM9 && !hearingPreference) {
+      erroredFields.push('hearingPreference');
+    }
+
+    if (form9Type === Constants.form9Types.INFORMAL_FORM9 && !hearingPreference) {
+      erroredFields.push('hearingPreference');
+    }
+
+    return erroredFields;
+  }
+  /* eslint-enable max-statements */
+
+  onClickContinue() {
+    const erroredFields = this.getValidationErrors();
+
+    if (erroredFields.length) {
+      this.props.showValidationErrors(erroredFields);
+
+      return;
+    }
+
+    this.props.certificationUpdateStart({
+      hearingDocumentIsInVbms: this.props.hearingDocumentIsInVbms,
+      form9Type: this.props.form9Type,
+      hearingPreference: this.props.hearingPreference,
+      vacolsId: this.props.match.params.vacols_id
+    });
+  }
+
+  isFieldErrored(fieldName) {
+    return this.props.erroredFields && this.props.erroredFields.includes(fieldName);
+  }
+
+  componentDidUpdate () {
+    if (this.props.scrollToError && this.props.erroredFields) {
+      ValidatorsUtil.scrollToAndFocusFirstError();
+      // This sets scrollToError to false so that users can edit other fields
+      // without being redirected back to the first errored field.
+      this.props.showValidationErrors(this.props.erroredFields, false);
+    }
+  }
+
+  /* eslint-disable max-statements */
   render() {
     let { hearingDocumentIsInVbms,
       onHearingDocumentChange,
       form9Type,
-      form9Date,
+      form9PdfPath,
       onTypeOfForm9Change,
-      hearingType,
-      onHearingTypeChange,
-      match
+      hearingPreference,
+      onHearingPreferenceChange,
+      loading,
+      serverError,
+      updateSucceeded,
+      match,
+      certificationStatus
     } = this.props;
 
-    const hearingCheckText = <span>Check the appellant's eFolder for a hearing
-    cancellation or request added after <strong>{form9Date}</strong>, the date the Form 9
-    (or statement in lieu of Form 9) was uploaded.</span>;
+    if (!certificationStatus.includes('started')) {
+      return <Redirect
+        to={`/certifications/${match.params.vacols_id}/check_documents`}/>;
+    }
 
-    const hearingChangeQuestion = <span>Was a hearing cancellation or request
-     added after <strong>{form9Date}</strong>?</span>;
+    if (updateSucceeded) {
+      return <Redirect
+        to={`/certifications/${match.params.vacols_id}/sign_and_certify`}/>;
+    }
+
+    if (serverError) {
+      return <Redirect
+        to={'/certifications/error'}/>;
+    }
+
+    const hearingCheckText = <span>Check the eFolder for the appellant’s most
+    recent hearing preference.</span>;
+
+    const hearingChangeQuestion = <span>Has the appellant requested a change
+    to their hearing preference since submitting the Form 9?</span>;
 
     const shouldDisplayHearingChangeFound =
       hearingDocumentIsInVbms === Constants.vbmsHearingDocument.FOUND;
@@ -155,13 +258,16 @@ class UnconnectedConfirmHearing extends React.Component {
           <div>
             {hearingCheckText}
           </div>
+
+          <div className="cf-help-divider"></div>
+
           {/*
             TODO: would we be better served by
             making our connected components smaller?
             we could make e.g.
             HearingChangeRadioField,
             TypeOfForm9RadioField,
-            HearingTypeChangeRadioField
+            hearingPreferenceChangeRadioField
 
             which would be a connected component with
             direct access to the Redux store.
@@ -171,24 +277,31 @@ class UnconnectedConfirmHearing extends React.Component {
             required={true}
             options={hearingChangeAnswers}
             value={hearingDocumentIsInVbms}
+            errorMessage={this.isFieldErrored('hearingDocumentIsInVbms') ? ERRORS.hearingDocumentIsInVbms : null}
             onChange={onHearingDocumentChange}/>
 
           {
             shouldDisplayHearingChangeFound &&
-            <RadioField name={hearingChangeFoundQuestion}
+            <RadioField
+              name={hearingChangeFoundQuestion}
               required={true}
+              errorMessage={this.isFieldErrored('hearingPreference') ? ERRORS.hearingPreference : null}
               options={hearingChangeFoundAnswers}
-              value={hearingType}
-              onChange={onHearingTypeChange}/>
+              value={hearingPreference}
+              onChange={onHearingPreferenceChange}
+            />
           }
 
           {
             shouldDisplayTypeOfForm9Question &&
-            <RadioField name={typeOfForm9Question}
+            <RadioField
+              name={typeOfForm9Question}
               required={true}
               options={typeOfForm9Answers}
               value={form9Type}
-              onChange={onTypeOfForm9Change}/>
+              errorMessage={this.isFieldErrored('form9Type') ? ERRORS.form9Type : null}
+              onChange={onTypeOfForm9Change}
+            />
           }
 
           {
@@ -196,11 +309,11 @@ class UnconnectedConfirmHearing extends React.Component {
 
             /* TODO: restore the accessibility stuff here.
               also, we should stop using rails pdf viewer */
-            <LoadingContainer>
+            <LoadingContainer color={AppConstants.LOADING_INDICATOR_COLOR_CERTIFICATION}>
               <iframe
                 className="cf-doc-embed cf-iframe-with-loading form9-viewer"
                 title="Form8 PDF"
-                src={`/certifications/${match.params.vacols_id}/form9_pdf`}>
+                src={form9PdfPath}>
               </iframe>
             </LoadingContainer>
           }
@@ -209,27 +322,29 @@ class UnconnectedConfirmHearing extends React.Component {
             shouldDisplayFormalForm9Question &&
             <RadioField name={formalForm9HearingQuestion}
               options={formalForm9HearingAnswers}
-              value={hearingType}
+              value={hearingPreference}
               required={true}
-              onChange={onHearingTypeChange}/>
+              errorMessage={this.isFieldErrored('hearingPreference') ? ERRORS.hearingPreference : null}
+              onChange={onHearingPreferenceChange}/>
           }
 
           {
             shouldDisplayInformalForm9Question &&
             <RadioField name={informalForm9HearingQuestion}
               options={informalForm9HearingAnswers}
-              value={hearingType}
+              value={hearingPreference}
               required={true}
-              onChange={onHearingTypeChange}/>
+              errorMessage={this.isFieldErrored('hearingPreference') ? ERRORS.hearingPreference : null}
+              onChange={onHearingPreferenceChange}/>
           }
         </div>
-
       <Footer
-        nextPageUrl={
-          `/certifications/${match.params.vacols_id}/sign_and_certify`
-        }/>
+        loading={loading}
+        onClickContinue={this.onClickContinue.bind(this)}
+      />
     </div>;
   }
+  /* eslint-enable max-statements */
 }
 
 /*
@@ -251,37 +366,24 @@ class UnconnectedConfirmHearing extends React.Component {
  * to return a new state object.
  */
 const mapDispatchToProps = (dispatch) => ({
-  updateProgressBar: () => {
-    dispatch({
-      type: Constants.UPDATE_PROGRESS_BAR,
-      payload: {
-        currentSection: Constants.progressBarSections.CONFIRM_HEARING
-      }
-    });
-  },
+  updateProgressBar: () => dispatch(actions.updateProgressBar()),
+
+  resetState: () => dispatch(certificationActions.resetState()),
+
   onHearingDocumentChange: (hearingDocumentIsInVbms) => {
-    dispatch({
-      type: Constants.CHANGE_VBMS_HEARING_DOCUMENT,
-      payload: {
-        hearingDocumentIsInVbms
-      }
-    });
+    dispatch(actions.onHearingDocumentChange(hearingDocumentIsInVbms));
   },
-  onTypeOfForm9Change: (form9Type) => {
-    dispatch({
-      type: Constants.CHANGE_TYPE_OF_FORM9,
-      payload: {
-        form9Type
-      }
-    });
+
+  showValidationErrors: (erroredFields, scrollToError = true) => {
+    dispatch(certificationActions.showValidationErrors(erroredFields, scrollToError));
   },
-  onHearingTypeChange: (hearingType) => {
-    dispatch({
-      type: Constants.CHANGE_TYPE_OF_HEARING,
-      payload: {
-        hearingType
-      }
-    });
+
+  onTypeOfForm9Change: (form9Type) => dispatch(actions.onTypeOfForm9Change(form9Type)),
+
+  onHearingPreferenceChange: (hearingPreference) => dispatch(actions.onHearingPreferenceChange(hearingPreference)),
+
+  certificationUpdateStart: (props) => {
+    dispatch(actions.certificationUpdateStart(props, dispatch));
   }
 });
 
@@ -294,8 +396,14 @@ const mapDispatchToProps = (dispatch) => ({
 const mapStateToProps = (state) => ({
   hearingDocumentIsInVbms: state.hearingDocumentIsInVbms,
   form9Type: state.form9Type,
-  form9Date: state.form9Date,
-  hearingType: state.hearingType
+  hearingPreference: state.hearingPreference,
+  loading: state.loading,
+  form9PdfPath: state.form9PdfPath,
+  erroredFields: state.erroredFields,
+  scrollToError: state.scrollToError,
+  updateSucceeded: state.updateSucceeded,
+  serverError: state.serverError,
+  certificationStatus: state.certificationStatus
 });
 
 /*
@@ -303,20 +411,21 @@ const mapStateToProps = (state) => ({
  * using the state & dispatch map functions and the
  * ConfirmHearing function.
  */
-const ConfirmHearing = connect(
+export default connect(
   mapStateToProps,
   mapDispatchToProps
-)(UnconnectedConfirmHearing);
+)(ConfirmHearing);
 
 ConfirmHearing.propTypes = {
   hearingDocumentIsInVbms: PropTypes.string,
   onHearingDocumentChange: PropTypes.func,
+  erroredFields: PropTypes.array,
+  scrollToError: PropTypes.bool,
   form9Type: PropTypes.string,
-  form9Date: PropTypes.string,
+  form9PdfPath: PropTypes.string,
   onTypeOfForm9Change: PropTypes.func,
-  hearingType: PropTypes.string,
-  onHearingTypeChange: PropTypes.func,
-  match: PropTypes.object.isRequired
+  hearingPreference: PropTypes.string,
+  onHearingPreferenceChange: PropTypes.func,
+  match: PropTypes.object.isRequired,
+  certificationStatus: PropTypes.string
 };
-
-export default ConfirmHearing;

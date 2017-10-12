@@ -2,18 +2,27 @@ import React from 'react';
 import StyleGuideModal from './StyleGuideModal';
 import StyleGuideTabs from './StyleGuideTabs';
 import StyleGuideProgressBar from './StyleGuideProgressBar';
+import StyleGuideButton from './StyleGuideButton';
 import StyleGuideLoadingButton from './StyleGuideLoadingButton';
-import StyleGuideLinkButton from './StyleGuideLinkButton';
 import StyleGuideRadioField from './StyleGuideRadioField';
 import StyleGuideCheckboxes from './StyleGuideCheckboxes';
 import StyleGuideTables from './StyleGuideTables';
-import StyleGuideTextInput from './StyleGuideTextInput';
 import StyleGuidePlaceholder from './StyleGuidePlaceholder';
+import StyleGuideMessages from './StyleGuideMessages';
 import StickyNav from '../../components/StickyNav';
 import NavLink from '../../components/NavLink';
-import StyleGuideUserDropdownMenu from './StyleGuideUserDropdownMenu';
-import StyleGuideNavigationBar from './StyleGuideNavigationBar';
+import StyleGuideSearch from './StyleGuideSearch';
 import StyleGuideSearchableDropdown from './StyleGuideSearchableDropdown';
+import StyleGuideLogos from './StyleGuideLogos';
+import StyleGuideColors from './StyleGuideColors';
+import StyleGuideLoaders from './StyleGuideLoaders';
+import StyleGuideSmallLoader from './StyleGuideSmallLoader';
+import StyleGuideLayout from './StyleGuideLayout';
+import StyleGuideDashboard from './StyleGuideDashboard';
+import StyleGuideTypography from './StyleGuideTypography';
+import StyleGuideFormFields from './StyleGuideFormFields';
+import StyleGuideAccordions from './StyleGuideAccordions';
+import StyleGuideAlerts from './StyleGuideAlerts';
 
 export default function StyleGuideIndex() {
 
@@ -39,7 +48,7 @@ export default function StyleGuideIndex() {
       name: 'Search'
     },
     {
-      anchor: '#dropdown',
+      anchor: '#dropdowns',
       name: 'Dropdown Menus'
     },
     {
@@ -67,8 +76,16 @@ export default function StyleGuideIndex() {
       name: 'Accordions'
     },
     {
-      anchor: '#forms_fields',
-      name: 'Forms Fields'
+      anchor: '#form_fields',
+      name: 'Form Fields'
+    },
+    {
+      anchor: '#loaders',
+      name: 'Loaders'
+    },
+    {
+      anchor: '#small_loader',
+      name: 'Small Loader'
     },
     {
       anchor: '#loading_buttons',
@@ -101,12 +118,16 @@ export default function StyleGuideIndex() {
     {
       anchor: '#progress_bar',
       name: 'Progress Bar'
+    },
+    {
+      anchor: '#logos',
+      name: 'Logos'
     }
   ];
 
 /* eslint-disable max-len */
 
-  return <div className="cf-app cf-push-row cf-sg-layout cf-app-segment cf-app-segment--alt">
+  return <div className="cf-app cf-sg-layout cf-app-segment cf-app-segment--alt">
       <StickyNav>
         {
           componentLinks.map((link, i) => (
@@ -114,7 +135,7 @@ export default function StyleGuideIndex() {
           ))
         }
       </StickyNav>
-      <div className="cf-push-right cf-sg-content">
+      <div className="cf-sg-content">
       <h1 id="commons">Caseflow Commons</h1>
         <p>
           Caseflow Commons is home to our most up to date style guide, UI Kit, and code for Caseflow products.
@@ -131,34 +152,23 @@ export default function StyleGuideIndex() {
           Download UI Kit</a>
         </p>
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Typography"
-          id="typography" />
+        <StyleGuideTypography />
+        <div className="cf-help-divider"></div>
         <StyleGuidePlaceholder
           title="Headings and Body"
           id="headings_and_body"
-          subsection={true} />
+          isSubsection={true} />
         <StyleGuidePlaceholder
           title="Styles"
           id="styles"
-          subsection={true} />
+          isSubsection={true} />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Colors"
-          id="colors" />
+        <StyleGuideColors />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Buttons"
-          id="buttons" />
-        <StyleGuideLinkButton />
+        <StyleGuideButton />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Search"
-          id="search" />
+        <StyleGuideSearch />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Dropdown Menus"
-          id="dropdown" />
         <StyleGuideSearchableDropdown />
         <div className="cf-help-divider"></div>
         <StyleGuideCheckboxes />
@@ -173,42 +183,33 @@ export default function StyleGuideIndex() {
         <div className="cf-help-divider"></div>
         <StyleGuideTabs />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Accordions"
-          id="accordions" />
+        <StyleGuideAccordions />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Forms Fields"
-          id="forms_fields" />
-        <StyleGuideTextInput />
+        <StyleGuideFormFields />
+        <div className="cf-help-divider"></div>
+        <StyleGuideLoaders />
+        <div className="cf-help-divider"></div>
+        <StyleGuideSmallLoader />
         <div className="cf-help-divider"></div>
         <StyleGuideLoadingButton />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Alerts"
-          id="alerts" />
+        <StyleGuideAlerts />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Layout"
-          id="layout" />
-        <StyleGuideNavigationBar />
-        <StyleGuideUserDropdownMenu />
+        <StyleGuideLayout />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Messages"
-          id="messages" />
+         <StyleGuideMessages />
         <div className="cf-help-divider"></div>
         <StyleGuidePlaceholder
           title="Branding"
           id="branding" />
         <div className="cf-help-divider"></div>
-        <StyleGuidePlaceholder
-          title="Dashboard"
-          id="dashboard" />
+        <StyleGuideDashboard />
         <div className="cf-help-divider"></div>
         <StyleGuideModal />
         <div className="cf-help-divider"></div>
         <StyleGuideProgressBar />
+        <div className="cf-help-divider"></div>
+        <StyleGuideLogos />
     </div>
     </div>;
 

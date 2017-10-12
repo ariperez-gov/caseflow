@@ -1,35 +1,46 @@
 import React from 'react';
-
-// components
-import TextField from '../../components/TextField';
-import Button from '../../components/Button';
 import StyleGuideComponentTitle from '../../components/StyleGuideComponentTitle';
-import InlineForm from '../../components/InlineForm';
+import TextField from '../../components/TextField';
 
-export default function StyleGuideTextInput() {
-  return <div>
-      <br />
+export default class StyleGuideTextInput extends React.Component {
+
+  constructor(props) {
+    super(props);
+
+    this.state = {
+      value: ''
+    };
+  }
+
+  render() {
+    return <div>
       <StyleGuideComponentTitle
         title="Text Input"
         id="text_input"
         link="StyleGuideTextInput.jsx"
+        isSubsection={true}
       />
-    <h3 id="inline_form">Inline Form</h3>
-      <p>
-        Inline forms give designers and developers the liberty to customize
-        the width and spacing of each field in a row. Input fields can be found
-        placed after labels and descriptions to provide users context and
-        actionable steps.
-      </p>
-    <InlineForm>
-      <TextField
-        label="Enter the number of people working today"
-        name="dummyEmployeeCount"
-        type="number"
-      />
-      <Button
-        name="Update"
-      />
-  </InlineForm>
-  </div>;
+    <p>A text input field in a form that allows the user to enter requested information.
+      It can appear as a field for a single line of text or an area for multiple
+      lines of text. For multiple lines of text we can also include a character
+      limit description below the text area.</p>
+    <p>Text inputs appear in 3 different formats depending on the status of the
+      user's input:</p>
+    <ul>
+      <li>Text Input label (no highlight) indicates that no action has been taken
+        in the text field</li>
+      <li>Text Input Focused (light blue-gray highlight) indicates that the user
+        has selected the input field</li>
+      <li>Text Input Error (red highlight) indicates that the user has made an
+        error when entering their text</li>
+    </ul>
+    <TextField
+      name="Text Input Label"
+      value={this.state.value}
+      required={false}
+      onChange={(value) => {
+        this.setState({ value });
+      }}/>
+    </div>;
+  }
 }

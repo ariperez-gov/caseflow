@@ -42,13 +42,13 @@ class SeedDB
 
   def create_tasks(number)
     num_appeals = @appeals.length
-    num_users = @users.length
 
     tasks = number.times.map do |i|
       establish_claim = EstablishClaim.create(
-        appeal: @appeals[i % num_appeals]
+        appeal: @appeals[i % num_appeals],
+        aasm_state: :unassigned,
+        prepared_at: rand(3).days.ago
         )
-      establish_claim.prepare!
       establish_claim
     end
 
@@ -72,19 +72,47 @@ class SeedDB
   end
 
   def create_default_users
+    @users.push(User.create(css_id: "Reader", station_id: "405", full_name: "VBMS Station ID maps to multiple VACOLS IDs"))
     @users.push(User.create(css_id: "Invalid Role", station_id: "283", full_name: "Cave Johnson"))
     @users.push(User.create(css_id: "Establish Claim", station_id: "283", full_name: "Jane Smith"))
-    @users.push(User.create(css_id: "Establish Claim", station_id: "284", full_name: "Bob Contoso"))
-    @users.push(User.create(css_id: "Establish Claim", station_id: "285", full_name: "Carole Johnson"))
+    @users.push(User.create(css_id: "Establish Claim", station_id: "405", full_name: "Carole Johnson"))
     @users.push(User.create(css_id: "Manage Claim Establishment", station_id: "283", full_name: "John Doe"))
     @users.push(User.create(css_id: "Certify Appeal", station_id: "283", full_name: "John Smith"))
     @users.push(User.create(css_id: "System Admin", station_id: "283", full_name: "Angelina Smith"))
     @users.push(User.create(css_id: "Reader", station_id: "283", full_name: "Angelina Smith"))
+    @users.push(User.create(css_id: "Hearing Prep", station_id: "283", full_name: "Lauren Roth"))
+    @users.push(User.create(css_id: "Mail Intake", station_id: "283", full_name: "Kwame Nkrumah"))
   end
 
   def create_annotations
     Generators::Annotation.create(comment: "Hello World!", document_id: 1, x: 300, y: 400)
     Generators::Annotation.create(comment: "This is an example comment", document_id: 2)
+  end
+
+  def create_ramp_elections(number)
+    number.times do |i|
+      RampElection.create!(
+        veteran_file_number: "#{i}5555555",
+        notice_date: i.weeks.ago
+      )
+    end
+  end
+
+  def create_tags
+    DocumentsTag.create(
+      tag_id: Generators::Tag.create(text: "Service Connected").id,
+      document_id: 1)
+    DocumentsTag.create(
+      tag_id: Generators::Tag.create(text: "Right Knee").id,
+      document_id: 2)
+  end
+
+  def create_hearings
+    Generators::Hearing.create
+  end
+
+  def create_api_key
+    ApiKey.new(consumer_name: "PUBLIC", key_string: "PUBLICDEMO123").save!
   end
 
   def clean_db
@@ -97,7 +125,11 @@ class SeedDB
     create_appeals(50)
     create_users(3)
     create_tasks(50)
+    create_ramp_elections(9)
     create_annotations
+    create_tags
+    create_hearings
+    create_api_key
   end
 end
 

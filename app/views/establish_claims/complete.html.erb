@@ -1,0 +1,13 @@
+<% content_for :page_title do task.appeal.task_header end %>
+
+<%= react_component("BaseContainer", props: {
+    availableTasks: tasks.any_assignable_to?(current_user),
+    buttonText: start_text,
+    checklist: task.actions_taken,
+    firstHeader: "Success!",
+    page: "EstablishClaimComplete",
+    totalCasesCompleted: total_cases_completed,
+    employeeCount: team_quota.user_count,
+    totalCasesToComplete: to_complete_count,
+    veteranName: task.appeal.veteran_full_name
+}) %>

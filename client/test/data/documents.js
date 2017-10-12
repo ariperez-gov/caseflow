@@ -3,16 +3,30 @@ export const documents = [
   {
     id: 1,
     filename: 'doc1',
-    received_at: '01/02/2017',
-    label: null,
-    type: 'bva decision'
+    content_url: '/document/1/pdf',
+    received_at: '2017-01-02',
+    category_medical: true,
+    type: 'bva decision',
+    tags: [
+      {
+        id: 1,
+        text: 'mytag'
+      }
+    ]
   },
   {
     id: 2,
     filename: 'doc2',
-    received_at: '03/04/2017',
-    label: null,
-    type: 'form 9'
+    content_url: '/document/2/pdf',
+    received_at: '2017-03-04',
+    category_procedural: true,
+    type: 'form 9',
+    tags: [
+      {
+        id: 1,
+        text: 'mytag'
+      }
+    ]
   }
 ];
 

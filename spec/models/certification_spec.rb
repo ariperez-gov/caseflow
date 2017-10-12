@@ -22,10 +22,20 @@ describe Certification do
   end
 
   let(:certification_completed_at) { nil }
+  let(:poa_matches) { true }
+  let(:poa_correct_in_bgs) { false }
   let(:certification) do
     Certification.new(
       vacols_id: appeal.vacols_id,
-      completed_at: certification_completed_at
+      completed_at: certification_completed_at,
+      poa_correct_in_bgs: poa_correct_in_bgs,
+      poa_matches: poa_matches,
+      vacols_representative_name: "VACOLS_NAME",
+      bgs_representative_name: "BGS_NAME",
+      vacols_representative_type: "VACOLS_TYPE",
+      bgs_representative_type: "BGS_TYPE",
+      representative_name: "NAME",
+      representative_type: "TYPE"
     )
   end
 
@@ -45,6 +55,13 @@ describe Certification do
         expect(subject).to eq(:already_certified)
         expect(certification.reload.already_certified).to be_truthy
         expect(certification.form8_started_at).to be_nil
+      end
+
+      it "does not update certification fields" do
+        certification.update(already_certified: true, certification_date: 2.days.ago)
+        date = certification.certification_date
+        subject
+        expect(certification.reload.certification_date).to eq date
       end
     end
 
@@ -241,6 +258,33 @@ describe Certification do
     end
   end
 
+  context ".find_by_vacols_id" do
+    let(:vacols_id) { "1122" }
+    let!(:certification) { Certification.create(vacols_id: vacols_id) }
+
+    subject { Certification.find_by_vacols_id(vacols_id) }
+
+    context "when certification exists and it has not been cancelled before" do
+      it "loads that certification " do
+        expect(subject.id).to eq(certification.id)
+      end
+    end
+
+    context "when certification exists and it has been cancelled before" do
+      let!(:certification_cancellation) do
+        CertificationCancellation.create(
+          certification_id: certification.id,
+          cancellation_reason: "test",
+          email: "test@gmail.com"
+        )
+      end
+
+      it "does not find one" do
+        expect(subject).to eq nil
+      end
+    end
+  end
+
   context ".find_or_create_by_vacols_id" do
     let(:vacols_id) { "1122" }
     subject { Certification.find_or_create_by_vacols_id(vacols_id) }
@@ -269,6 +313,78 @@ describe Certification do
     context "when certification doesn't exist with that vacols_id" do
       it "creates a certification" do
         expect(subject.id).to eq(Certification.where(vacols_id: vacols_id).last.id)
+      end
+    end
+  end
+
+  context "#bgs_rep_address_found?" do
+    subject { certification.bgs_rep_address_found? }
+
+    it "returns true when bgs address is found" do
+      expect(subject).to eq true
+    end
+  end
+
+  context "#fetch_power_of_attorney!" do
+    subject { certification }
+
+    it "returns true when bgs address is found" do
+      certification.fetch_power_of_attorney!
+      expect(subject.bgs_rep_city).to eq "SAN FRANCISCO"
+      expect(subject.bgs_representative_type).to eq "Attorney"
+      expect(subject.bgs_representative_name).to eq "Clarence Darrow"
+      expect(subject.vacols_representative_name).to eq "The American Legion"
+    end
+  end
+
+  context "#v2" do
+    subject { Certification.v2 }
+
+    before do
+      Certification.create(v2: true)
+      Certification.create(bgs_representative_type: "Attorney")
+      Certification.create(bgs_representative_name: "Sir Alex F")
+      Certification.create(vacols_representative_type: "Attorney")
+      Certification.create(vacols_representative_name: "Jose Mou")
+      Certification.create
+    end
+
+    it "returns only v2 certifications" do
+      expect(Certification.all.count).to eq 6
+      expect(subject.count).to eq 5
+    end
+  end
+
+  context "#rep_name, #rep_type" do
+    context "when the user indicates that poa matches across bgs and vacols" do
+      let(:poa_matches) { true }
+      it "returns representative name from vacols" do
+        expect(certification.rep_name).to eq("VACOLS_NAME")
+      end
+      it "returns representative type from vacols" do
+        expect(certification.rep_type).to eq("VACOLS_TYPE")
+      end
+    end
+
+    context "when the user indicates that poa does not match but bgs is correct" do
+      let(:poa_matches) { false }
+      let(:poa_correct_in_bgs) { true }
+      it "returns representative type from bgs" do
+        expect(certification.rep_name).to eq("BGS_NAME")
+      end
+      it "returns representative name from bgs" do
+        expect(certification.rep_type).to eq("BGS_TYPE")
+      end
+    end
+
+    context "when bgs and vacols poa are both not correct" do
+      let(:poa_matches) { false }
+      let(:poa_correct_in_bgs) { false }
+      it "returns representative type from bgs" do
+        expect(certification.rep_name).to eq("NAME")
+      end
+      it "returns representative name from bgs" do
+        expect(certification.rep_type).to eq("TYPE")
       end
     end
   end

@@ -1,4 +1,5 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 
 // components
 import Alert from '../components/Alert';
@@ -9,25 +10,27 @@ import StyleGuideIndex from './StyleGuide/StyleGuideIndex';
 import StyleGuideModal from './StyleGuide/StyleGuideModal';
 import StyleGuideTabs from './StyleGuide/StyleGuideTabs';
 import CaseWorkerIndex from './CaseWorker/CaseWorkerIndex';
-import TasksManagerIndex from './TasksManager/TasksManagerIndex';
 import TestPage from './TestPage';
+import Intake from '../intake';
 import Reader from '../reader/index.jsx';
 import EstablishClaimComplete from './EstablishClaimPage/EstablishClaimComplete';
 import EstablishClaimCancel from './EstablishClaimPage/EstablishClaimCanceled';
 import UnpreparedTasksIndex from './UnpreparedTasksIndex';
+import CanceledTasksIndex from './CanceledTasksIndex';
 
 const Pages = {
   CaseWorkerIndex,
   DecisionReviewer: Reader,
+  Intake,
   EstablishClaim,
   EstablishClaimCancel,
   EstablishClaimComplete,
   StyleGuideIndex,
   StyleGuideModal,
   StyleGuideTabs,
-  TasksManagerIndex,
   TestPage,
-  UnpreparedTasksIndex
+  UnpreparedTasksIndex,
+  CanceledTasksIndex
 };
 
 // This is the "base page" that wraps all pages rendered directly
@@ -75,12 +78,14 @@ export default class BaseContainer extends React.Component {
     let PageComponent = Pages[page];
 
     return <div>
-      {alert && <Alert
-        type={alert.type}
-        title={alert.title}
-        message={alert.message}
-        handleClear={this.handleAlertClear}
-      />}
+      {alert && <div className="cf-app-segment">
+          <Alert
+          type={alert.type}
+          title={alert.title}
+          message={alert.message}
+          handleClear={this.handleAlertClear}
+        />
+      </div>}
       <PageComponent
         {...rest}
         handleAlert={this.handleAlert}

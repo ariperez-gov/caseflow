@@ -1,11 +1,16 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 import TextField from '../components/TextField';
 import DateSelector from '../components/DateSelector';
 import RadioField from '../components/RadioField';
 import Footer from './Footer';
 import { connect } from 'react-redux';
 import * as Constants from './constants/constants';
-
+import * as certificationActions from './actions/Certification';
+import * as actions from './actions/SignAndCertify';
+import { Redirect } from 'react-router-dom';
+import ValidatorsUtil from '../util/ValidatorsUtil';
+import { formatDateStr } from '../util/DateUtil';
 
 const certifyingOfficialTitleOptions = [{
   displayText: 'Decision Review Officer',
@@ -24,12 +29,101 @@ const certifyingOfficialTitleOptions = [{
   value: Constants.certifyingOfficialTitles.OTHER
 }];
 
-class UnconnectedSignAndCertify extends React.Component {
+const ERRORS = {
+  certifyingOffice: 'Please enter the certifying office.',
+  certifyingUsername: 'Please enter the organizational element.',
+  certifyingOfficialName: 'Please enter the name of the certifying official (usually your name).',
+  certifyingOfficialTitle: 'Please enter the title of the certifying official.',
+  certificationDate: "Please enter today's date.",
+  fieldLength: 'Please enter less than 40 characters in the field below.'
+};
+
+export class SignAndCertify extends React.Component {
   // TODO: updating state in ComponentWillMount is
   // sometimes thought of as an anti-pattern.
   // is there a better way to do this?
   componentWillMount() {
     this.props.updateProgressBar();
+  }
+
+  /* eslint class-methods-use-this: ["error", { "exceptMethods": ["componentDidMount"] }] */
+  componentDidMount() {
+    window.scrollTo(0, 0);
+  }
+
+  getValidationErrors() {
+
+    const erroredFields = [];
+
+    if (ValidatorsUtil.requiredValidator(this.props.certifyingOfficialName)) {
+      erroredFields.push('certifyingOfficialName');
+    } else if (ValidatorsUtil.lengthValidator(this.props.certifyingOfficialName)) {
+      erroredFields.push('certifyingOfficialNameLength');
+    }
+
+    if (ValidatorsUtil.requiredValidator(this.props.certifyingOfficialTitle)) {
+      erroredFields.push('certifyingOfficialTitle');
+    }
+
+    if (this.props.certifyingOfficialTitle === Constants.certifyingOfficialTitles.OTHER) {
+      if (ValidatorsUtil.requiredValidator(this.props.certifyingOfficialTitleOther)) {
+        erroredFields.push('certifyingOfficialTitleOther');
+      } else if (ValidatorsUtil.lengthValidator(this.props.certifyingOfficialTitleOther)) {
+        erroredFields.push('certifyingOfficialTitleOtherLength');
+      }
+    }
+
+    return erroredFields;
+  }
+
+  onClickContinue() {
+    const erroredFields = this.getValidationErrors();
+
+    if (erroredFields.length) {
+      this.props.showValidationErrors(erroredFields);
+
+      return;
+    }
+
+    this.props.certificationUpdateStart({
+      certifyingOfficialName: this.props.certifyingOfficialName,
+      certifyingOfficialTitle: this.props.certifyingOfficialTitle,
+      certifyingOfficialTitleOther: this.props.certifyingOfficialTitleOther,
+      vacolsId: this.props.match.params.vacols_id
+    });
+  }
+
+  isFieldErrored(fieldName) {
+    return this.props.erroredFields && this.props.erroredFields.includes(fieldName);
+  }
+
+  certifyingOfficialNameError() {
+    if (this.isFieldErrored('certifyingOfficialName')) {
+      return ERRORS.certifyingOfficialName;
+    } else if (this.isFieldErrored('certifyingOfficialNameLength')) {
+      return ERRORS.fieldLength;
+    }
+
+    return null;
+  }
+
+  certifyingOfficialTitleOtherError() {
+    if (this.isFieldErrored('certifyingOfficialTitleOther')) {
+      return ERRORS.certifyingOfficialTitle;
+    } else if (this.isFieldErrored('certifyingOfficialTitleOtherLength')) {
+      return ERRORS.fieldLength;
+    }
+
+    return null;
+  }
+
+  componentDidUpdate () {
+    if (this.props.scrollToError && this.props.erroredFields) {
+      ValidatorsUtil.scrollToAndFocusFirstError();
+      // This sets scrollToError to false so that users can edit other fields
+      // without being redirected back to the first errored field.
+      this.props.showValidationErrors(this.props.erroredFields, false);
+    }
   }
 
   render() {
@@ -39,66 +133,102 @@ class UnconnectedSignAndCertify extends React.Component {
       certifyingUsername,
       certifyingOfficialName,
       certifyingOfficialTitle,
+      certifyingOfficialTitleOther,
       certificationDate,
-      match
+      loading,
+      updateSucceeded,
+      serverError,
+      match,
+      certificationStatus
     } = this.props;
+
+    if (!certificationStatus.includes('started')) {
+      return <Redirect
+        to={`/certifications/${match.params.vacols_id}/check_documents`}/>;
+    }
+
+    if (updateSucceeded) {
+      return <Redirect
+        to={`/certifications/${match.params.vacols_id}/success`}/>;
+    }
+
+    if (serverError) {
+      return <Redirect
+        to={'/certifications/error'}/>;
+    }
+
+    const shouldDisplayCertifyingOfficialTitleOther =
+      certifyingOfficialTitle === Constants.certifyingOfficialTitles.OTHER;
 
     return <div>
       <form>
         <div className="cf-app-segment cf-app-segment--alt">
           <h2>Sign and Certify</h2>
           <p>Fill in information about yourself below to sign this certification.</p>
+          <div className="cf-help-divider"></div>
           <TextField
-            name="Name and location of certifying office:"
+            name={'Name and location of certifying office:'}
             value={certifyingOffice}
-            required={true}
-            onChange={onSignAndCertifyFormChange.bind(this, 'certifyingOffice')}/>
+            readOnly={true}
+          />
           <TextField
-            name="Organizational elements certifying appeal:"
+            name={'Organizational elements certifying appeal:'}
             value={certifyingUsername}
-            required={true}
-            onChange={onSignAndCertifyFormChange.bind(this, 'certifyingUsername')}/>
+            readOnly={true}
+          />
           <TextField
-            name="Name of certifying official:"
+            name={'Name of certifying official:'}
             value={certifyingOfficialName}
+            errorMessage={this.certifyingOfficialNameError()}
             required={true}
             onChange={onSignAndCertifyFormChange.bind(this, 'certifyingOfficialName')}/>
           <RadioField
             name="Title of certifying official:"
             options={certifyingOfficialTitleOptions}
             value={certifyingOfficialTitle}
+            errorMessage={(this.isFieldErrored('certifyingOfficialTitle') ? ERRORS.certifyingOfficialTitle : null)}
             required={true}
             onChange={onSignAndCertifyFormChange.bind(this, 'certifyingOfficialTitle')}/>
+          {
+            shouldDisplayCertifyingOfficialTitleOther &&
+            <TextField
+              name={'Specify other title of certifying official:'}
+              value={certifyingOfficialTitleOther}
+              errorMessage={this.certifyingOfficialTitleOtherError()}
+              required={true}
+              onChange={onSignAndCertifyFormChange.bind(this, 'certifyingOfficialTitleOther')}
+            />
+          }
           <DateSelector
-            name="Decision Date:"
-            value={certificationDate}
-            required={true}
-            onChange={onSignAndCertifyFormChange.bind(this, 'certificationDate')}/>
+            name={'Date:'}
+            value={formatDateStr(certificationDate)}
+            readOnly={true}
+          />
         </div>
       </form>
-    <Footer nextPageUrl={
-      `/certifications/${match.params.vacols_id}/success`
-    }/>
+    <Footer
+      loading={loading}
+      onClickContinue={this.onClickContinue.bind(this)}
+    />
   </div>;
   }
 }
 
 const mapDispatchToProps = (dispatch) => ({
   updateProgressBar: () => {
-    dispatch({
-      type: Constants.UPDATE_PROGRESS_BAR,
-      payload: {
-        currentSection: Constants.progressBarSections.SIGN_AND_CERTIFY
-      }
-    });
+    dispatch(actions.updateProgressBar());
   },
+
+  showValidationErrors: (erroredFields, scrollToError = true) => {
+    dispatch(certificationActions.showValidationErrors(erroredFields, scrollToError));
+  },
+
   onSignAndCertifyFormChange: (fieldName, value) => {
-    dispatch({
-      type: Constants.CHANGE_SIGN_AND_CERTIFY_FORM,
-      payload: {
-        [fieldName]: value
-      }
-    });
+    dispatch(actions.onSignAndCertifyFormChange(fieldName, value));
+  },
+
+  certificationUpdateStart: (props) => {
+    dispatch(actions.certificationUpdateStart(props, dispatch));
   }
 });
 
@@ -107,13 +237,20 @@ const mapStateToProps = (state) => ({
   certifyingUsername: state.certifyingUsername,
   certifyingOfficialName: state.certifyingOfficialName,
   certifyingOfficialTitle: state.certifyingOfficialTitle,
-  certificationDate: state.certificationDate
+  certifyingOfficialTitleOther: state.certifyingOfficialTitleOther,
+  certificationDate: state.certificationDate,
+  erroredFields: state.erroredFields,
+  scrollToError: state.scrollToError,
+  loading: state.loading,
+  updateSucceeded: state.updateSucceeded,
+  serverError: state.serverError,
+  certificationStatus: state.certificationStatus
 });
 
-const SignAndCertify = connect(
+export default connect(
   mapStateToProps,
   mapDispatchToProps
-)(UnconnectedSignAndCertify);
+)(SignAndCertify);
 
 SignAndCertify.propTypes = {
   onSignAndCertifyFormChange: PropTypes.func,
@@ -121,8 +258,10 @@ SignAndCertify.propTypes = {
   certifyingUsername: PropTypes.string,
   certifyingOfficialName: PropTypes.string,
   certifyingOfficialTitle: PropTypes.string,
+  certifyingOfficialTitleOther: PropTypes.string,
   certificationDate: PropTypes.string,
-  match: PropTypes.object.isRequired
+  erroredFields: PropTypes.array,
+  scrollToError: PropTypes.bool,
+  match: PropTypes.object.isRequired,
+  certificationStatus: PropTypes.string
 };
-
-export default SignAndCertify;

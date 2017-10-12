@@ -4,6 +4,7 @@ class VACOLS::RegionalOffice < VACOLS::Record
 
   # Maps CSS Station # to RO id
   STATIONS = {
+    "101" => "VACO",
     "301" => "RO01",
     "402" => "RO02",
     "304" => "RO04",
@@ -27,7 +28,7 @@ class VACOLS::RegionalOffice < VACOLS::Record
     "323" => "RO23",
     "325" => "RO25",
     "326" => "RO26",
-    "327" => "RO27",
+    "327" => %w(RO27 RO70),
     "328" => "RO28",
     "329" => "RO29",
     "330" => %w(RO30 RO75 RO82 RO85),
@@ -58,7 +59,7 @@ class VACOLS::RegionalOffice < VACOLS::Record
     "459" => "RO59",
     "460" => "RO60",
     "362" => "RO62",
-    "363" => "RO63",
+    "463" => "RO63",
     "372" => "RO72",
     "373" => "RO73",
     "377" => "RO77",
@@ -155,7 +156,16 @@ class VACOLS::RegionalOffice < VACOLS::Record
     "RO97" => { city: "ARC", state: "DC", timezone: "America/New_York" },
     "RO98" => { city: "National Cemetery Administration - St. Louis", state: "MO", timezone: "America/Chicago" },
     "RO99" => { city: "VHA CO", state: "DC", timezone: "America/New_York" },
-    "DSUSER" => { city: "Digital Service HQ", state: "DC", timezone: "America/New_York" }
+    "DSUSER" => { city: "Digital Service HQ", state: "DC", timezone: "America/New_York" },
+    "VACO" => { city: "Washington", state: "DC", timezone: "America/New_York" }
   }.freeze
   ROS = CITIES.keys.freeze
+
+  SATELLITE_OFFICES = {
+    "SO62" => { city: "San Antonio", state: "TX", timezone: "America/Chicago", regional_office: "RO62" },
+    "SO06" => { city: "Albany", state: "NY", timezone: "America/New_York", regional_office: "RO06" },
+    "SO54" => { city: "Las Vegas", state: "NV", timezone: "America/Los_Angeles", regional_office: "RO54" },
+    "SO49" => { city: "El Paso", state: "TX", timezone: "America/Chicago", regional_office: "RO49" },
+    "SO43" => { city: "Sacremento", state: "CA", timezone: "America/Los_Angeles", regional_office: "RO43" }
+  }.freeze
 end

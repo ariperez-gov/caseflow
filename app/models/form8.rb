@@ -31,6 +31,11 @@ class Form8 < ActiveRecord::Base
     :contested_claims_procedures_applicable,
     :contested_claims_requirements_followed,
     :soc_date,
+    :form9_date,
+    :nod_date,
+    :ssoc_date_1,
+    :ssoc_date_2,
+    :ssoc_date_3,
     :ssoc_required,
     :record_other_explanation,
     :remarks,
@@ -47,8 +52,11 @@ class Form8 < ActiveRecord::Base
   end
 
   # rubocop:disable Metrics/MethodLength
+  # rubocop:disable Metrics/CyclomaticComplexity
   # rubocop:disable Metrics/AbcSize
   def assign_attributes_from_appeal(appeal)
+    ssoc_dates = appeal.ssoc_dates.empty? ? [] : appeal.ssoc_dates.sort
+
     assign_attributes(
       vacols_id: appeal.vacols_id,
       appellant_name: appeal.appellant_name,
@@ -60,6 +68,11 @@ class Form8 < ActiveRecord::Base
       increased_rating_notification_date: appeal.notification_date,
       other_notification_date: appeal.notification_date,
       soc_date: appeal.soc_date,
+      form9_date: appeal.form9_date,
+      nod_date: appeal.nod_date,
+      ssoc_date_1: ssoc_dates[0],
+      ssoc_date_2: ssoc_dates[1],
+      ssoc_date_3: ssoc_dates[2],
       representative_name: appeal.representative_name,
       representative_type: appeal.representative_type,
       hearing_requested: appeal.hearing_requested ? "Yes" : "No",
@@ -81,6 +94,9 @@ class Form8 < ActiveRecord::Base
       _initial_ssoc_required: appeal.ssoc_dates.empty? ? "Not required" : "Required and furnished"
     )
   end
+  # rubocop:enable Metrics/MethodLength
+  # rubocop:enable Metrics/CyclomaticComplexity
+  # rubocop:enable Metrics/AbcSize
 
   def update_certification_date
     update_attributes!(certification_date: Time.zone.now.to_date)
@@ -177,7 +193,7 @@ class Form8 < ActiveRecord::Base
 
   def pdf_location
     path = Form8.pdf_service.output_location_for(self)
-    fetch_from_s3_and_save(path) unless File.exist?(path)
+    fetch_from_s3_and_save(path)
     path
   end
 
@@ -196,7 +212,6 @@ class Form8 < ActiveRecord::Base
   def update_from_string_params(params)
     date_fields = [:certification_date, :service_connection_notification_date, :increased_rating_notification_date,
                    :other_notification_date, :soc_date]
-
     date_fields.each do |f|
       raw_value = params[f]
       params[f] = begin
@@ -205,7 +220,6 @@ class Form8 < ActiveRecord::Base
                     nil
                   end if raw_value && raw_value.is_a?(String)
     end
-
     update(params)
   end
 

@@ -1,8 +1,6 @@
 const _ = require('lodash');
 const webpackConfig = require('./webpack.config.js');
 
-const karmaTestPattern = 'test/karma/**/*-test.js';
-
 module.exports = function(config) {
   config.set({
     browsers: ['Chrome'],
@@ -16,20 +14,20 @@ module.exports = function(config) {
     },
 
     files: [
-      { pattern: karmaTestPattern }
+      'test/karma/setup.js',
+      'test/karma/test-index.js'
     ],
 
-    preprocessors: {
-      [karmaTestPattern]: ['webpack', 'sourcemap']
+    mochaReporter: {
+      showDiff: true
     },
 
-    // Note that karma-webpack will ignore the `entry` value for
-    // our webpack config, and will instead run the compiler for
-    // each file matched by the test pattern specified above.
-    // This means that our other entry points, which we use
-    // for shims and polyfills, need to be manually imported
-    // in the tests.
+    preprocessors: {
+      'test/karma/test-index.js': ['webpack']
+    },
+
     webpack: _.merge({
+      watch: true,
       externals: {
         cheerio: 'window',
         'react/addons': true,

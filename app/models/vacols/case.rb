@@ -3,10 +3,12 @@ class VACOLS::Case < VACOLS::Record
   self.sequence_name = "vacols.bfkeyseq"
   self.primary_key = "bfkey"
 
-  has_one    :folder,        foreign_key: :ticknum
-  belongs_to :correspondent, foreign_key: :bfcorkey, primary_key: :stafkey
-  has_many   :issues,        foreign_key: :isskey
-  has_many   :notes,         foreign_key: :tsktknm
+  has_one    :folder,          foreign_key: :ticknum
+  has_one    :representative,  foreign_key: :repkey
+  belongs_to :correspondent,   foreign_key: :bfcorkey, primary_key: :stafkey
+  has_many   :case_issues,     foreign_key: :isskey
+  has_many   :notes,           foreign_key: :tsktknm
+  has_many   :case_hearings,   foreign_key: :folder_nr
 
   class InvalidLocationError < StandardError; end
 
@@ -38,6 +40,7 @@ class VACOLS::Case < VACOLS::Record
     "G" => "Advance Failure to Respond",
     "L" => "Manlincon Remand",
     "M" => "Merged Appeal",
+    "P" => "RAMP Opt-in",
     "Q" => "Recon Motion Withdrawn",
     "R" => "Reconsideration by Letter",
     "V" => "Motion to Vacate Withdrawn",
@@ -53,6 +56,7 @@ class VACOLS::Case < VACOLS::Record
     "MOT" => "Motion" # appellant has filed a motion for reconsideration
   }.freeze
 
+  # corresponds to BRIEFF.bfso
   REPRESENTATIVES = {
     "A" => { full_name: "The American Legion", short: "American Legion" },
     "B" => { full_name: "AMVETS", short: "AmVets" },
@@ -68,15 +72,17 @@ class VACOLS::Case < VACOLS::Record
     "L" => { full_name: "No Representative", short: "None" },
     "M" => { full_name: "Navy Mutual Aid Association", short: "Navy Mut Aid" },
     "N" => { full_name: "Non-Commissioned Officers Association", short: "NCOA" },
-    "O" => { full_name: "Other Service Organization", short: "Other" },
+    # TODO: double check that "Other Service Organization" is the correct full name.
+    # Possibly this should just be "Other"
+    "O" => { full_name: "Other Service Organization", short: "Other", rep_name_in_rep_table: true },
     "P" => { full_name: "Army & Air Force Mutual Aid Assn.", short: "Army Mut Aid" },
     "Q" => { full_name: "Catholic War Veterans", short: "Catholic War Vets" },
     "R" => { full_name: "Fleet Reserve Association", short: "Fleet Reserve" },
     "S" => { full_name: "Marine Corp League", short: "Marine Corps League" },
-    "T" => { full_name: "Attorney", short: "Attorney" },
-    "U" => { full_name: "Agent", short: "Agent" },
+    "T" => { full_name: "Attorney", short: "Attorney", rep_name_in_rep_table: true },
+    "U" => { full_name: "Agent", short: "Agent", rep_name_in_rep_table: true },
     "V" => { full_name: "Vietnam Veterans of America", short: "VVA" },
-    "W" => { full_name: "One Time Representative", short: "One Time Rep" },
+    "W" => { full_name: "One Time Representative", short: "One Time Rep", rep_name_in_rep_table: true },
     "X" => { full_name: "American Ex-Prisoners of War", short: "EXPOW" },
     "Y" => { full_name: "Blinded Veterans Association", short: "Blinded Vet Assoc" },
     "Z" => { full_name: "National Veterans Legal Services Program", short: "NVLSP" },
@@ -98,10 +104,22 @@ class VACOLS::Case < VACOLS::Record
     "5" => :none
   }.freeze
 
+  HEARING_PREFERENCE_TYPES_V2 = {
+    VIDEO: { vacols_value: "2", video_hearing: true, ready_for_hearing: true },
+    TRAVEL_BOARD: { vacols_value: "2", ready_for_hearing: true },
+    WASHINGTON_DC: { vacols_value: "1" },
+    # when the hearing type is not specified,
+    # default to a video hearing.
+    HEARING_TYPE_NOT_SPECIFIED: { vacols_value: "2", video_hearing: true, ready_for_hearing: true },
+    NO_HEARING_DESIRED: { vacols_value: "5" },
+    HEARING_CANCELLED: { vacols_value: "5" },
+    NO_BOX_SELECTED: { vacols_value: "5" }
+  }.freeze
+
   # NOTE(jd): This is a list of the valid locations that Caseflow
   # supports updating an appeal to. This is a subset of the overall locations
   # supported in VACOLS
-  VALID_UPDATE_LOCATIONS = %w(50 51 53 54 98).freeze
+  VALID_UPDATE_LOCATIONS = %w(50 51 53 54 77 98 99).freeze
 
   JOIN_ISSUE_COUNT = "
     inner join
@@ -137,7 +155,7 @@ class VACOLS::Case < VACOLS::Record
     -- Only include VBMS cases.
   ".freeze
 
-  WHERE_PAPERLESS_NONPA_FULLGRANT_AFTER_DATE = %{
+  WHERE_PAPERLESS_FULLGRANT_AFTER_DATE = %{
     BFMPRO = 'HIS'
 
     and TIOCTIME >= to_date(?, 'YYYY-MM-DD HH24:MI')
@@ -145,9 +163,6 @@ class VACOLS::Case < VACOLS::Record
 
     and TIVBMS = 'Y'
     -- Only include VBMS cases.
-
-    and BFSO <> 'T'
-    -- Exclude cases with a private attorney.
 
     and ISSUE_CNT_ALLOWED > 0
     -- Check that there is at least one non-new-material allowed issue
@@ -165,9 +180,16 @@ class VACOLS::Case < VACOLS::Record
   end
 
   def self.amc_full_grants(outcoded_after:)
-    VACOLS::Case.joins(:folder, :correspondent, JOIN_ISSUE_COUNT)
-                .where(WHERE_PAPERLESS_NONPA_FULLGRANT_AFTER_DATE, outcoded_after.to_formatted_s(:oracle_date))
-                .order("BFDDEC ASC")
+    if FeatureToggle.enabled?(:dispatch_full_grants_with_pa)
+      VACOLS::Case.joins(:folder, :correspondent, JOIN_ISSUE_COUNT)
+                  .where(WHERE_PAPERLESS_FULLGRANT_AFTER_DATE, outcoded_after.to_formatted_s(:oracle_date))
+                  .order("BFDDEC ASC")
+    else
+      VACOLS::Case.joins(:folder, :correspondent, JOIN_ISSUE_COUNT)
+                  .where(WHERE_PAPERLESS_FULLGRANT_AFTER_DATE, outcoded_after.to_formatted_s(:oracle_date))
+                  .where(%(BFSO <> 'T'))
+                  .order("BFDDEC ASC")
+    end
   end
 
   # rubocop:disable Metrics/MethodLength
@@ -210,6 +232,47 @@ class VACOLS::Case < VACOLS::Record
           VALUES
            (SYSDATE, SYSDATE, #{location}, #{user_db_id}, #{case_id})
         SQL
+      end
+    end
+  end
+
+  ##
+  # This method takes an array of vacols ids and fetches their aod status.
+  #
+  def self.aod(vacols_ids)
+    conn = connection
+
+    conn.transaction do
+      query = <<-SQL
+        SELECT BRIEFF.BFKEY, (case when (nvl(AOD_DIARIES.CNT, 0) + nvl(AOD_HEARINGS.CNT, 0)) > 0 then 1 else 0 end) AOD
+        FROM BRIEFF
+
+        LEFT JOIN (
+          SELECT TSKTKNM, count(*) CNT
+          FROM ASSIGN
+          WHERE TSKACTCD in ('B', 'B1', 'B2')
+          GROUP BY TSKTKNM
+        ) AOD_DIARIES
+        ON AOD_DIARIES.TSKTKNM = BRIEFF.BFKEY
+        LEFT JOIN (
+          SELECT FOLDER_NR, count(*) CNT
+          FROM HEARSCHED
+          WHERE HEARING_TYPE IN ('C', 'T', 'V')
+            AND AOD IN ('G', 'Y')
+          GROUP BY FOLDER_NR
+        ) AOD_HEARINGS
+        ON AOD_HEARINGS.FOLDER_NR = BRIEFF.BFKEY
+        WHERE BRIEFF.BFKEY IN (?)
+      SQL
+
+      aod_result = MetricsService.record("VACOLS: Case.aod for #{vacols_ids}", name: "Case.aod",
+                                                                               service: :vacols) do
+        conn.exec_query(sanitize_sql_array([query, vacols_ids]))
+      end
+
+      aod_result.to_hash.reduce({}) do |memo, result|
+        memo[(result["bfkey"]).to_s] = (result["aod"] == 1)
+        memo
       end
     end
   end

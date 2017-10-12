@@ -12,6 +12,7 @@
 /db/*.sqlite3-journal
 
 # Ignore all logfiles and tempfiles.
+.byebug_history
 /log/*
 !/log/.keep
 /tmp
@@ -29,6 +30,10 @@
 # React on Rails
 npm-debug.log*
 node_modules
+
+.agignore
+.env
+client/.agignore
 
 # Generated js bundles
 /app/assets/webpack/*

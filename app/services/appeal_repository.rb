@@ -1,24 +1,16 @@
-# :nocov:
-class VBMSCaseflowLogger
-  def log(event, data)
-    case event
-    when :request
-      status = data[:response_code]
-      name = data[:request].class.name.split("::").last
 
-      if status != 200
-        Rails.logger.error(
-          "VBMS HTTP Error #{status} " \
-          "(#{name}) #{data[:response_body]}"
-        )
-      end
-    end
-  end
-end
-# :nocov:
 
 class AppealRepository
+  CAVC_TYPE = "7".freeze
+
   # :nocov:
+  # Used by healthcheck endpoint
+  # Calling .active? triggers a query to VACOLS
+  # `select 1 from dual`
+  def self.vacols_db_connection_active?
+    VACOLS::Record.connection.active?
+  end
+
   # Returns a boolean saying whether the load succeeded
   def self.load_vacols_data(appeal)
     case_record = MetricsService.record("VACOLS: load_vacols_data #{appeal.vacols_id}",
@@ -33,6 +25,30 @@ class AppealRepository
 
   rescue ActiveRecord::RecordNotFound
     return false
+  end
+
+  def self.appeals_by_vbms_id(vbms_id)
+    cases = MetricsService.record("VACOLS: appeals_by_vbms_id",
+                                  service: :vacols,
+                                  name: "appeals_by_vbms_id") do
+      VACOLS::Case.where(bfcorlid: vbms_id).includes(:folder, :correspondent)
+    end
+
+    cases.map { |case_record| build_appeal(case_record) }
+  end
+
+  def self.appeals_ready_for_hearing(vbms_id)
+    cases = MetricsService.record("VACOLS: appeals_ready_for_hearing",
+                                  service: :vacols,
+                                  name: "appeals_ready_for_hearing") do
+      # An appeal is ready for hearing if form 9 has been submitted, but no decision
+      # has yet been made
+      VACOLS::Case.where(bfcorlid: vbms_id, bfddec: nil)
+                  .where.not(bfd19: nil)
+                  .includes(:folder, :correspondent)
+    end
+
+    cases.map { |case_record| build_appeal(case_record, true) }
   end
 
   def self.load_vacols_data_by_vbms_id(appeal:, decision_type:)
@@ -62,8 +78,9 @@ class AppealRepository
   # :nocov:
 
   # TODO: consider persisting these records
-  def self.build_appeal(case_record)
+  def self.build_appeal(case_record, persist = false)
     appeal = Appeal.find_or_initialize_by(vacols_id: case_record.bfkey)
+    appeal.save! if persist
     set_vacols_values(appeal: appeal, case_record: case_record)
   end
 
@@ -71,6 +88,7 @@ class AppealRepository
   def self.set_vacols_values(appeal:, case_record:)
     correspondent_record = case_record.correspondent
     folder_record = case_record.folder
+    outcoder_record = folder_record.outcoder
 
     appeal.assign_from_vacols(
       vbms_id: case_record.bfcorlid,
@@ -80,10 +98,17 @@ class AppealRepository
       veteran_first_name: correspondent_record.snamef,
       veteran_middle_initial: correspondent_record.snamemi,
       veteran_last_name: correspondent_record.snamel,
+      veteran_date_of_birth: normalize_vacols_date(correspondent_record.sdob),
+      outcoder_first_name: outcoder_record.try(:snamef),
+      outcoder_last_name: outcoder_record.try(:snamel),
+      outcoder_middle_initial: outcoder_record.try(:snamemi),
       appellant_first_name: correspondent_record.sspare1,
       appellant_middle_initial: correspondent_record.sspare2,
       appellant_last_name: correspondent_record.sspare3,
       appellant_relationship: correspondent_record.sspare1 ? correspondent_record.susrtyp : "",
+      appellant_ssn: correspondent_record.ssn,
+      appellant_city: correspondent_record.saddrcty,
+      appellant_state: correspondent_record.saddrstt,
       insurance_loan_number: case_record.bfpdnum,
       notification_date: normalize_vacols_date(case_record.bfdrodec),
       nod_date: normalize_vacols_date(case_record.bfdnod),
@@ -91,15 +116,21 @@ class AppealRepository
       form9_date: normalize_vacols_date(case_record.bfd19),
       ssoc_dates: ssoc_dates_from(case_record),
       hearing_request_type: VACOLS::Case::HEARING_REQUEST_TYPES[case_record.bfhr],
+      video_hearing_requested: case_record.bfdocind == "V",
       hearing_requested: (case_record.bfhr == "1" || case_record.bfhr == "2"),
       hearing_held: !case_record.bfha.nil?,
       regional_office_key: case_record.bfregoff,
       certification_date: case_record.bf41stat,
+      case_review_date: folder_record.tidktime,
       case_record: case_record,
       disposition: VACOLS::Case::DISPOSITIONS[case_record.bfdc],
       decision_date: normalize_vacols_date(case_record.bfddec),
+      prior_decision_date: normalize_vacols_date(case_record.bfdpdcn),
       status: VACOLS::Case::STATUS[case_record.bfmpro],
-      outcoding_date: normalize_vacols_date(folder_record.tioctime)
+      outcoding_date: normalize_vacols_date(folder_record.tioctime),
+      private_attorney_or_agent: case_record.bfso == "T",
+      docket_number: folder_record.tinum,
+      cavc: VACOLS::Case::TYPES[case_record.bfac] == VACOLS::Case::TYPES[CAVC_TYPE]
     )
 
     appeal
@@ -107,7 +138,7 @@ class AppealRepository
 
   # :nocov:
   def self.issues(vacols_id)
-    VACOLS::CaseIssue.descriptions(vacols_id).map do |issue_hash|
+    VACOLS::CaseIssue.descriptions([vacols_id])[vacols_id].map do |issue_hash|
       Issue.load_from_vacols(issue_hash)
     end
   end
@@ -170,21 +201,19 @@ class AppealRepository
   end
   # :nocov:
 
-  def self.establish_claim!(veteran_hash:, claim_hash:)
-    @vbms_client ||= init_vbms_client
-
-    request = VBMS::Requests::EstablishClaim.new(veteran_hash, claim_hash)
-
-    send_and_log_request(veteran_hash[:file_number], request)
-  end
-
-  def self.update_vacols_after_dispatch!(appeal:, vacols_note: nil)
+  def self.update_vacols_after_dispatch!(appeal:, vacols_note:)
     VACOLS::Case.transaction do
       update_location_after_dispatch!(appeal: appeal)
 
       if vacols_note
-        VACOLS::Note.create!(case_record: appeal.case_record,
-                             text: vacols_note)
+        VACOLS::Note.create!(case_id: appeal.case_record.bfkey,
+                             text: vacols_note,
+                             user_id: RequestStore.store[:current_user].regional_office.upcase,
+                             assigned_to: appeal.case_record.bfregoff,
+                             code: :other,
+                             days_to_complete: 30,
+                             days_til_due: 30
+                            )
       end
     end
   end
@@ -207,20 +236,67 @@ class AppealRepository
     "98"
   end
 
-  def self.certify(appeal)
-    certification_date = AppealRepository.dateshift_to_utc Time.zone.now
+  # Close an appeal (prematurely, such as for a withdrawal or a VAIMA opt in)
+  # WARNING: some parts of this action are not automatically reversable, and must
+  # be reversed by hand
+  def self.close!(appeal:, user:, closed_on:, disposition_code:)
+    case_record = appeal.case_record
+    folder_record = case_record.folder
 
-    # TODO(alex):
-    # if certification v2 is enabled,
-    # appeal.case_record.bfhr
-    # '1' - Central Office
-    # '2' - Travel Board/Video hearing
-    # '5' - None
+    VACOLS::Case.transaction do
+      case_record.update_attributes!(
+        bfmpro: "HIS",
+        bfddec: dateshift_to_utc(closed_on),
+        bfdc: disposition_code,
+        bfboard: "00",
+        bfmemid: "000",
+        bfattid: "000"
+      )
+
+      case_record.update_vacols_location!("99")
+
+      folder_record.update_attributes!(
+        ticukey: "HISTORY",
+        tikeywrd: "HISTORY",
+        tidcls: dateshift_to_utc(closed_on),
+        timdtime: VacolsHelper.local_time_with_utc_timezone,
+        timduser: user.regional_office
+      )
+
+      # Close any issues associated to the appeal
+      case_record.case_issues.update_all(
+        issdc: disposition_code,
+        issdcls: VacolsHelper.local_time_with_utc_timezone
+      )
+
+      # Cancel any open diary notes for the appeal
+      case_record.notes.where(tskdcls: nil).update_all(
+        tskdcls: VacolsHelper.local_time_with_utc_timezone,
+        tskmdtm: VacolsHelper.local_time_with_utc_timezone,
+        tskmdusr: user.regional_office,
+        tskstat: "C"
+      )
+
+      # Cancel any scheduled hearings
+      case_record.case_hearings.where(clsdate: nil, hearing_disp: nil).update_all(
+        clsdate: VacolsHelper.local_time_with_utc_timezone,
+        hearing_disp: "C"
+      )
+    end
+  end
+
+  def self.certify(appeal:, certification:)
+    certification_date = AppealRepository.dateshift_to_utc Time.zone.now
 
     appeal.case_record.bfdcertool = certification_date
     appeal.case_record.bf41stat = certification_date
 
-    appeal.case_record.bftbind = "X" if appeal.hearing_request_type == :travel_board
+    preference_attrs = VACOLS::Case::HEARING_PREFERENCE_TYPES_V2[certification.hearing_preference.to_sym]
+    appeal.case_record.bfhr = preference_attrs[:vacols_value]
+    # "Ready for hearing" checkbox
+    appeal.case_record.bftbind = preference_attrs[:ready_for_hearing] ? "X" : nil
+    # "Video hearing" checkbox
+    appeal.case_record.bfdocind = preference_attrs[:video_hearing] ? "V" : nil
 
     MetricsService.record("VACOLS: certify #{appeal.vacols_id}",
                           service: :vacols,
@@ -229,141 +305,33 @@ class AppealRepository
     end
   end
 
-  # Reverses the certification of an appeal.
-  # This is only used for test data setup, so it doesn't exist on Fakes::AppealRepository
-  def self.uncertify(appeal)
-    appeal.case_record.bftbind = nil
-    appeal.case_record.bfdcertool = nil
-    appeal.case_record.bf41stat = nil
-    appeal.case_record.save!
+  def self.aod(vacols_id)
+    VACOLS::Case.aod([vacols_id])[vacols_id]
   end
 
-  def self.upload_document_to_vbms(appeal, form8)
-    @vbms_client ||= init_vbms_client
-    document = if FeatureToggle.enabled?(:vbms_efolder_service_v1)
-                 response = initialize_upload(appeal, form8)
-                 upload_document(appeal.vbms_id, response.upload_token, form8.pdf_location)
-               else
-                 upload_document_deprecated(appeal, form8)
-               end
-    document
-  end
+  def self.load_user_case_assignments_from_vacols(css_id)
+    MetricsService.record("VACOLS: active_cases_for_user #{css_id}",
+                          service: :vacols,
+                          name: "active_cases_for_user") do
+      active_cases_for_user = VACOLS::CaseAssignment.active_cases_for_user(css_id)
+      active_cases_vacols_ids = active_cases_for_user.map(&:vacols_id)
+      active_cases_aod_results = VACOLS::Case.aod(active_cases_vacols_ids)
+      active_cases_issues = VACOLS::CaseIssue.descriptions(active_cases_vacols_ids)
 
-  def self.clean_document(location)
-    File.delete(location)
-  end
+      active_cases_for_user.map do |assignment|
+        assignment_issues_hash_array = active_cases_issues[assignment.vacols_id]
 
-  def self.initialize_upload(appeal, uploadable_document)
-    content_hash = Digest::SHA1.hexdigest(File.read(uploadable_document.pdf_location))
-    filename = SecureRandom.uuid + File.basename(uploadable_document.pdf_location)
-    request = VBMS::Requests::InitializeUpload.new(
-      content_hash: content_hash,
-      filename: filename,
-      file_number: appeal.sanitized_vbms_id,
-      va_receive_date: uploadable_document.upload_date,
-      doc_type: uploadable_document.document_type_id,
-      source: "VACOLS",
-      subject: uploadable_document.document_type,
-      new_mail: true
-    )
-    send_and_log_request(appeal.vbms_id, request)
-  end
+        # if that appeal is not found, it intializes a new appeal with the
+        # assignments vacols_id
+        appeal = Appeal.new(vacols_id: assignment.vacols_id, vbms_id: assignment.vbms_id)
+        appeal.attributes = assignment.attributes
+        appeal.aod = active_cases_aod_results[assignment.vacols_id]
 
-  def self.upload_document(vbms_id, upload_token, filepath)
-    request = VBMS::Requests::UploadDocument.new(
-      upload_token: upload_token,
-      filepath: filepath
-    )
-    send_and_log_request(vbms_id, request)
-  end
-
-  def self.upload_document_deprecated(appeal, uploadable_document)
-    request = VBMS::Requests::UploadDocumentWithAssociations.new(
-      appeal.sanitized_vbms_id,
-      uploadable_document.upload_date,
-      appeal.veteran_first_name,
-      appeal.veteran_middle_initial,
-      appeal.veteran_last_name,
-      uploadable_document.document_type,
-      uploadable_document.pdf_location,
-      uploadable_document.document_type_id,
-      "VACOLS",
-      true
-    )
-    send_and_log_request(appeal.vbms_id, request)
-  end
-
-  def self.send_and_log_request(vbms_id, request)
-    name = request.class.name.split("::").last
-    MetricsService.record("sent VBMS request #{request.class} for #{vbms_id}",
-                          service: :vbms,
-                          name: name) do
-      @vbms_client.send_request(request)
-    end
-
-  rescue VBMS::ClientError => e
-    Raven.capture_exception(e)
-    Rails.logger.error "#{e.message}\n#{e.backtrace.join("\n")}"
-
-    raise e
-  end
-
-  def self.fetch_documents_for(appeal)
-    @vbms_client ||= init_vbms_client
-
-    sanitized_id = appeal.sanitized_vbms_id
-    request = if FeatureToggle.enabled?(:vbms_efolder_service_v1)
-                VBMS::Requests::FindDocumentSeriesReference.new(sanitized_id)
-              else
-                VBMS::Requests::ListDocuments.new(sanitized_id)
-              end
-    documents = send_and_log_request(sanitized_id, request)
-
-    Rails.logger.info("Document list length: #{documents.length}")
-
-    documents.map do |vbms_document|
-      Document.from_vbms_document(vbms_document)
+        # fetching Issue objects using the issue hash
+        appeal.issues = assignment_issues_hash_array.map { |issue_hash| Issue.load_from_vacols(issue_hash) }
+        appeal
+      end
     end
   end
-
-  def self.fetch_document_file(document)
-    @vbms_client ||= init_vbms_client
-
-    vbms_id = document.vbms_document_id
-    request = if FeatureToggle.enabled?(:vbms_efolder_service_v1)
-                VBMS::Requests::GetDocumentContent.new(vbms_id)
-              else
-                VBMS::Requests::FetchDocumentById.new(vbms_id)
-              end
-    result = send_and_log_request(vbms_id, request)
-    result && result.content
-  end
-
-  def self.vbms_config
-    config = Rails.application.secrets.vbms.clone
-
-    vbms_base_dir = config["env_dir"]
-    vbms_env_name = config["env_name"]
-
-    fail "missing vbms base dir" unless vbms_base_dir
-    fail "missing vbms env name" unless vbms_env_name
-
-    %w(keyfile saml key cacert cert).each do |file|
-      vbms_file = config[file]
-      fail "missing vbms file #{file}" unless vbms_file
-
-      config[file] = File.join(vbms_base_dir, vbms_env_name, vbms_file)
-    end
-
-    config
-  end
-
-  def self.init_vbms_client
-    VBMS::Client.from_env_vars(
-      logger: VBMSCaseflowLogger.new,
-      env_name: ENV["CONNECT_VBMS_ENV"]
-    )
-  end
-
   # :nocov:
 end

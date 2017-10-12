@@ -3,9 +3,21 @@ require "rails_helper"
 User.authentication_service = Fakes::AuthenticationService
 
 describe User do
-  let(:session) { { "user" => { "id" => "123", "station_id" => "456" } } }
+  let(:session) { { "user" => { "id" => "123", "station_id" => "310" } } }
   let(:user) { User.from_session(session, OpenStruct.new(remote_ip: "127.0.0.1")) }
-  before { Fakes::AuthenticationService.user_session = nil }
+
+  before(:all) do
+    User.appeal_repository = Fakes::AppealRepository
+    Functions.client.del("System Admin")
+  end
+
+  after(:all) do
+    Functions.delete_all_keys!
+  end
+
+  before do
+    Fakes::AuthenticationService.user_session = nil
+  end
 
   context "#regional_office" do
     context "when RO can't be determined using station_id" do
@@ -34,6 +46,13 @@ describe User do
       it { is_expected.to eq(["System Admin", "Certify Appeal"]) }
     end
 
+    context "when persisted to database" do
+      before { user.update(roles: ["System Admin"]) }
+      it "can read from saved attributes" do
+        expect(user.read_attribute(:roles)).to eq(["System Admin"])
+      end
+    end
+
     context "when has a role alias" do
       before { user.roles = ["Manage Claims Establishme"] }
       it "is expected to return the aliases as well" do
@@ -45,8 +64,8 @@ describe User do
   context "#timezone" do
     context "when ro is set" do
       subject { user.timezone }
-      before { user.regional_office = "RO26" }
-      it { is_expected.to eq("America/Indiana/Indianapolis") }
+      before { user.regional_office = "RO84" }
+      it { is_expected.to eq("America/New_York") }
     end
 
     context "when ro isn't set" do
@@ -56,42 +75,12 @@ describe User do
     end
   end
 
-  context "#functions" do
-    subject { user.functions }
+  context "CSUM/CSEM users with 'System Admin' function" do
+    before { user.roles = ["System Admin"] }
+    before { Functions.client.del("System Admin") }
 
-    context "user has only system admin role" do
-      before { session["user"]["roles"] = ["System Admin"] }
-      before { session["user"]["admin_roles"] = ["System Admin"] }
-      result = {
-        "Establish Claim" => { enabled: false },
-        "Manage Claim Establishment" => { enabled: false },
-        "Certify Appeal" => { enabled: false },
-        "CertificationV2" => { enabled: false },
-        "Reader" => { enabled: false }
-      }
-      it { is_expected.to eq result }
-    end
-
-    context "user has more than a system admin role" do
-      before { session["user"]["roles"] = ["System Admin"] }
-      before { session["user"]["admin_roles"] = ["System Admin", "Manage Claim Establishment"] }
-      result = {
-        "Establish Claim" => { enabled: false },
-        "Manage Claim Establishment" => { enabled: true },
-        "Certify Appeal" => { enabled: false },
-        "CertificationV2" => { enabled: false },
-        "Reader" => { enabled: false }
-      }
-      it { is_expected.to eq result }
-    end
-  end
-
-  context "#toggle_admin_roles" do
-    it "adds a function and then removes" do
-      user.toggle_admin_roles(role: "Establish Claim", enable: true)
-      expect(user.admin_roles).to eq ["Establish Claim"]
-      user.toggle_admin_roles(role: "Establish Claim", enable: false)
-      expect(user.admin_roles).to eq []
+    it "are not admins" do
+      expect(user.admin?).to be_falsey
     end
   end
 
@@ -114,6 +103,7 @@ describe User do
 
   context "#can?" do
     subject { user.can?("Do the thing") }
+    before { Functions.client.del("System Admin") }
 
     context "when roles are nil" do
       before { session["user"]["roles"] = nil }
@@ -130,15 +120,21 @@ describe User do
       it { is_expected.to be_truthy }
     end
 
-    context "when system admin roles don't contain the thing" do
-      before { session["user"]["roles"] = ["System Admin"] }
-      before { session["user"]["admin_roles"] = ["System Admin"] }
+    context "when roles don't contain the thing but user is granted the function" do
+      before { session["user"]["roles"] = ["Do the other thing!"] }
+      before { Functions.grant!("Do the thing", users: ["123"]) }
+      it { is_expected.to be_truthy }
+    end
+
+    context "when roles contains the thing but user is denied" do
+      before { session["user"]["roles"] = ["Do the thing"] }
+      before { Functions.deny!("Do the thing", users: ["123"]) }
       it { is_expected.to be_falsey }
     end
 
-    context "when system admin roles contain the thing" do
-      before { session["user"]["roles"] = ["System Admin"] }
-      before { session["user"]["admin_roles"] = ["System Admin", "Do the thing"] }
+    context "when system admin and roles don't contain the thing" do
+      before { Functions.grant!("System Admin", users: ["123"]) }
+      before { session["user"]["roles"] = ["Do the other thing"] }
       it { is_expected.to be_truthy }
     end
   end
@@ -146,6 +142,7 @@ describe User do
   context "#admin?" do
     subject { user.admin? }
     before { session["user"]["roles"] = nil }
+    before { Functions.client.del("System Admin") }
 
     context "when user with roles that are nil" do
       it { is_expected.to be_falsey }
@@ -157,7 +154,7 @@ describe User do
     end
 
     context "when user with roles that contain admin" do
-      before { session["user"]["roles"] = ["System Admin"] }
+      before { Functions.grant!("System Admin", users: ["123"]) }
       it { is_expected.to be_truthy }
     end
   end
@@ -178,15 +175,9 @@ describe User do
   end
 
   context "#authenticate" do
-    subject { user.authenticate(regional_office: "rO21", password: password) }
-    before do
-      Fakes::AuthenticationService.vacols_regional_offices = {
-        "RO21" => "pinkpowerranger" }
-    end
+    subject { user.regional_office = "rO21" }
 
     context "when user enters lowercase RO" do
-      let(:password) { "pinkpowerranger" }
-
       it "sets regional_office in the session" do
         is_expected.to be_truthy
         expect(user.regional_office).to eq("RO21")
@@ -194,28 +185,54 @@ describe User do
     end
   end
 
-  context "#authenticate" do
-    subject { user.authenticate(regional_office: "RO21", password: password) }
+  context "#current_case_assignments" do
+    subject { user.current_case_assignments }
+
+    let(:appeal) { Generators::Appeal.create }
+
     before do
-      Fakes::AuthenticationService.vacols_regional_offices = {
-        "RO21" => "pinkpowerranger" }
+      User.appeal_repository = Fakes::AppealRepository
     end
 
-    context "when vacols authentication passes" do
-      let(:password) { "pinkpowerranger" }
+    it "returns empty array when no cases are assigned" do
+      Fakes::AppealRepository.appeal_records = []
+      is_expected.to be_empty
+    end
 
-      it "sets regional_office in the session" do
-        is_expected.to be_truthy
-        expect(user.regional_office).to eq("RO21")
+    it "returns appeal assigned to user" do
+      Fakes::AppealRepository.appeal_records = [appeal]
+      is_expected.to match_array([appeal])
+    end
+  end
+
+  context "#current_case_assignments_with_views" do
+    subject { user.current_case_assignments_with_views[0] }
+
+    let(:appeal) { Generators::Appeal.create }
+
+    before do
+      Fakes::AppealRepository.appeal_records = [appeal]
+    end
+
+    it "returns nil when no cases have been viewed" do
+      is_expected.to include(
+        "vbms_id" => appeal.vbms_id,
+        "vacols_id" => appeal.vacols_id,
+        "veteran_full_name" => appeal.veteran_full_name,
+        "viewed" => nil)
+    end
+
+    context "has hash with view" do
+      before do
+        AppealView.create(user_id: user.id, appeal_id: appeal.id)
       end
-    end
 
-    context "when vacols authentication fails" do
-      let(:password) { "redpowerranger" }
-
-      it "doesn't set regional_office in the session" do
-        is_expected.to be_falsey
-        expect(user.regional_office).to be_nil
+      it do
+        is_expected.to include(
+          "vbms_id" => appeal.vbms_id,
+          "vacols_id" => appeal.vacols_id,
+          "veteran_full_name" => appeal.veteran_full_name,
+          "viewed" => true)
       end
     end
   end
@@ -225,7 +242,6 @@ describe User do
     context "gets a user object from a session" do
       before do
         session["user"]["roles"] = ["Do the thing"]
-        session["user"]["admin_roles"] = ["Do even more"]
         session[:regional_office] = "283"
         session["user"]["name"] = "Anne Merica"
         session["user"]["ip_address"] = "127.0.0.1"
@@ -236,7 +252,6 @@ describe User do
         expect(subject.roles).to eq(["Do the thing"])
         expect(subject.regional_office).to eq("283")
         expect(subject.full_name).to eq("Anne Merica")
-        expect(subject.admin_roles).to eq(["Do even more"])
       end
 
       it "persists user to DB" do
@@ -291,7 +306,8 @@ describe User do
         FakeTask.create!(
           user: user,
           aasm_state: :started,
-          appeal: Generators::Appeal.create
+          appeal: Generators::Appeal.create,
+          prepared_at: Date.yesterday
         )
       end
 

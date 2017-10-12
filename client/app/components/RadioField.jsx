@@ -1,4 +1,6 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
+
 import RequiredIndicator from './RequiredIndicator';
 import StringUtil from '../util/StringUtil';
 
@@ -26,6 +28,7 @@ export default class RadioField extends React.Component {
       onChange,
       required,
       errorMessage,
+      strongLabel,
       hideLabel
     } = this.props;
 
@@ -46,9 +49,15 @@ export default class RadioField extends React.Component {
     // Since HTML5 IDs should not contain spaces...
     let idPart = StringUtil.html5CompliantId(id || name);
 
+    const labelContents = <span>{(label || name)} {(required && <RequiredIndicator/>)}</span>;
+
     return <fieldset className={radioClass.join(' ')}>
       <legend className={labelClass}>
-        {(label || name)} {(required && <RequiredIndicator/>)}
+        {
+          strongLabel ?
+            <strong>{labelContents}</strong> :
+            labelContents
+        }
       </legend>
 
       {errorMessage && <span className="usa-input-error-message">{errorMessage}</span>}
@@ -66,7 +75,7 @@ export default class RadioField extends React.Component {
               value={option.value}
               checked={value === option.value}
             />
-            <label htmlFor={`${idPart}_${option.value}`}>{option.displayText}</label>
+            <label htmlFor={`${idPart}_${option.value}`}>{option.displayText || option.displayElem}</label>
           </div>
         )}
       </div>

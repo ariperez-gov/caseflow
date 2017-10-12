@@ -1,8 +1,16 @@
 class Fakes::BGSService
+  include PowerOfAttorneyMapper
+  include AddressMapper
+
   cattr_accessor :end_product_data
   cattr_accessor :inaccessible_appeal_vbms_ids
   cattr_accessor :veteran_records
+  cattr_accessor :power_of_attorney_records
+  cattr_accessor :address_records
+  cattr_accessor :ssn_not_found
   attr_accessor :client
+
+  ID_TO_RAISE_ERROR = "ERROR-ID".freeze
 
   # rubocop:disable Metrics/MethodLength
   def self.all_grants
@@ -11,29 +19,29 @@ class Fakes::BGSService
       {
         benefit_claim_id: "1",
         claim_receive_date: 20.days.ago.to_formatted_s(:short_date),
-        claim_type_code: "172GRANT",
-        end_product_type_code: "172",
+        claim_type_code: "070BVAGR",
+        end_product_type_code: "070",
         status_type_code: "PEND"
       },
       {
         benefit_claim_id: "2",
         claim_receive_date: default_date,
-        claim_type_code: "170RMD",
-        end_product_type_code: "170",
+        claim_type_code: "070RMND",
+        end_product_type_code: "070",
         status_type_code: "CLR"
       },
       {
         benefit_claim_id: "3",
         claim_receive_date: Time.zone.now.to_formatted_s(:short_date),
-        claim_type_code: "172BVAG",
-        end_product_type_code: "172",
+        claim_type_code: "070BVAGR",
+        end_product_type_code: "071",
         status_type_code: "CAN"
       },
       {
         benefit_claim_id: "4",
         claim_receive_date: 200.days.ago.to_formatted_s(:short_date),
-        claim_type_code: "172BVAG",
-        end_product_type_code: "172",
+        claim_type_code: "070BVAGR",
+        end_product_type_code: "072",
         status_type_code: "CLR"
       },
       {
@@ -81,7 +89,7 @@ class Fakes::BGSService
       {
         benefit_claim_id: "11",
         claim_receive_date: default_date,
-        claim_type_code: "172GRANT",
+        claim_type_code: "070BVAGRARC",
         end_product_type_code: "170",
         status_type_code: "PEND"
       },
@@ -135,8 +143,8 @@ class Fakes::BGSService
       {
         benefit_claim_id: "1",
         claim_receive_date: 20.days.ago.to_formatted_s(:short_date),
-        claim_type_code: "172GRANT",
-        end_product_type_code: "172",
+        claim_type_code: "070BVAGR",
+        end_product_type_code: "070",
         status_type_code: "PEND"
       }
     ]
@@ -147,22 +155,22 @@ class Fakes::BGSService
       {
         benefit_claim_id: "1",
         claim_receive_date: 10.days.ago.to_formatted_s(:short_date),
-        claim_type_code: "170RMD",
-        end_product_type_code: "170",
+        claim_type_code: "070RMBVAGARC",
+        end_product_type_code: "070",
         status_type_code: "PEND"
       },
       {
         benefit_claim_id: "2",
         claim_receive_date: 10.days.ago.to_formatted_s(:short_date),
-        claim_type_code: "170RMD",
-        end_product_type_code: "171",
+        claim_type_code: "070RMBVAGARC",
+        end_product_type_code: "071",
         status_type_code: "CLR"
       },
       {
         benefit_claim_id: "3",
         claim_receive_date: 200.days.ago.to_formatted_s(:short_date),
-        claim_type_code: "170RMD",
-        end_product_type_code: "175",
+        claim_type_code: "070RMBVAGARC",
+        end_product_type_code: "072",
         status_type_code: "PEND"
       }
     ]
@@ -172,19 +180,104 @@ class Fakes::BGSService
     []
   end
 
+  def self.power_of_attorney_records
+    {
+      "111225555" =>
+        {
+          file_number: "111225555",
+          power_of_attorney:
+            {
+              legacy_poa_cd: "3QQ",
+              nm: "Clarence Darrow",
+              org_type_nm: "POA Attorney",
+              ptcpnt_id: "ERROR-ID"
+            },
+          ptcpnt_id: "600085545"
+        }
+    }
+  end
+
+  def self.clean!
+    self.ssn_not_found = false
+    self.inaccessible_appeal_vbms_ids = []
+  end
+
   def get_end_products(_veteran_id)
     end_product_data || self.class.no_grants
   end
 
   def fetch_veteran_info(vbms_id)
-    (self.class.veteran_records || {})[vbms_id] || default_veteran_record
+    (self.class.veteran_records || {})[vbms_id]
   end
 
   def can_access?(vbms_id)
     !(self.class.inaccessible_appeal_vbms_ids || []).include?(vbms_id)
   end
 
+  # TODO: add more test cases
+  def fetch_poa_by_file_number(file_number)
+    record = (self.class.power_of_attorney_records || {})[file_number]
+    record ||= default_power_of_attorney_record
+
+    get_poa_from_bgs_poa(record)
+  end
+
+  # TODO: add more test cases
+  def find_address_by_participant_id(participant_id)
+    fail Savon::Error if participant_id == ID_TO_RAISE_ERROR
+
+    address = (self.class.address_records || {})[participant_id]
+    address ||= default_address
+
+    get_address_from_bgs_address(address)
+  end
+
+  def fetch_file_number_by_ssn(ssn)
+    ssn_not_found ? nil : ssn
+  end
+
   private
+
+  def default_power_of_attorney_record
+    {
+      file_number: "633792224",
+      power_of_attorney:
+        {
+          legacy_poa_cd: "3QQ",
+          nm: "Clarence Darrow",
+          org_type_nm: "POA Attorney",
+          ptcpnt_id: "600153863"
+        },
+      ptcpnt_id: "600085544"
+    }
+  end
+
+  def default_address
+    {
+      addrs_one_txt: "9999 MISSION ST",
+      addrs_three_txt: "APT 2",
+      addrs_two_txt: "UBER",
+      city_nm: "SAN FRANCISCO",
+      cntry_nm: "USA",
+      efctv_dt: 15.days.ago.to_formatted_s(:short_date),
+      jrn_dt: 15.days.ago.to_formatted_s(:short_date),
+      jrn_lctn_id: "283",
+      jrn_obj_id: "SHARE  - PCAN",
+      jrn_status_type_cd: "U",
+      jrn_user_id: "CASEFLOW1",
+      postal_cd: "CA",
+      ptcpnt_addrs_id: "15069061",
+      ptcpnt_addrs_type_nm: "Mailing",
+      ptcpnt_id: "600085544",
+      shared_addrs_ind: "N",
+      trsury_addrs_four_txt: "SAN FRANCISCO CA",
+      trsury_addrs_one_txt: "Jamie Fakerton",
+      trsury_addrs_three_txt: "APT 2",
+      trsury_addrs_two_txt: "9999 MISSION ST",
+      trsury_seq_nbr: "5",
+      zip_prefix_nbr: "94103"
+    }
+  end
 
   def default_veteran_record
     {
@@ -256,7 +349,15 @@ class Fakes::BGSService
       zip_code: "20136",
       power_of_atty_code1: "0",
       power_of_atty_code2: "00",
-      sex: "F"
+      sex: "F",
+      service: [{ branch_of_service: "Army",
+                  entered_on_duty_date: "02132002",
+                  released_active_duty_date: "12212003",
+                  char_of_svc_code: "HON" },
+                { branch_of_service: "Navy",
+                  entered_on_duty_date: "07022006",
+                  released_active_duty_date: "06282008",
+                  char_of_svc_code: "UHC" }]
     }
   end
 end

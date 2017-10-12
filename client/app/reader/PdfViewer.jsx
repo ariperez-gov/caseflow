@@ -1,186 +1,137 @@
-import React, { PropTypes } from 'react';
-import PdfUI from '../components/PdfUI';
-import PdfSidebar from '../components/PdfSidebar';
+import React from 'react';
+import PropTypes from 'prop-types';
+import _ from 'lodash';
+import { connect } from 'react-redux';
+
+import PdfUI from './PdfUI';
+import PdfSidebar from './PdfSidebar';
 import Modal from '../components/Modal';
+import { closeAnnotationDeleteModal, deleteAnnotation, showPlaceAnnotationIcon,
+  selectCurrentPdf, fetchAppealDetails, stopPlacingAnnotation } from './actions';
+import { isUserEditingText, shouldFetchAppeal } from './utils';
+import { update } from '../util/ReducerUtil';
+import { bindActionCreators } from 'redux';
+import { getFilteredDocuments } from './selectors';
+import * as Constants from './constants';
+import { CATEGORIES, ACTION_NAMES, INTERACTION_TYPES } from './analytics';
+
+const NUMBER_OF_DIRECTIONS = 4;
+
+// Given a direction, the current coordinates, an array of the div elements for each page,
+// the file, and rotation of the document, this function calculates the next location of the comment.
+export const getNextAnnotationIconPageCoords = (direction, placingAnnotationIconPageCoords, pages, file, rotation) => {
+  // There are four valid rotations: 0, 90, 180, 270. We transform those values to 0, -1, -2, -3.
+  // We then use that value to rotate the direction. I.E. Hitting up (value 0) on the
+  // keyboard when rotated 90 degrees corresponds to moving left (value 3) on the document.
+  const rotationIncrements = -(rotation / Constants.ROTATION_INCREMENTS) % NUMBER_OF_DIRECTIONS;
+  const transformedDirection = Constants.MOVE_ANNOTATION_ICON_DIRECTION_ARRAY[
+    (direction + rotationIncrements + NUMBER_OF_DIRECTIONS) % NUMBER_OF_DIRECTIONS];
+  const moveAmountPx = 5;
+  const movementDirection = _.includes(
+    [Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.UP, Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.LEFT],
+    transformedDirection
+  ) ? -1 : 1;
+  const movementDimension = _.includes(
+    [Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.UP, Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.DOWN],
+    transformedDirection
+  ) ? 'y' : 'x';
+
+  const {
+    pageIndex,
+    ...pageCoords
+  } = update(placingAnnotationIconPageCoords, {
+    [movementDimension]: {
+      $apply: (coord) => coord + (moveAmountPx * movementDirection)
+    }
+  });
+
+  const pageCoordsBounds = pages[`${file}-${pageIndex}`].dimensions;
+
+  // This calculation is not quite right, because we are not using the scale
+  // to correct ANNOTATION_ICON_SIDE_LENGTH. This leads to the outer edge of where
+  // you're able to place the annotation with the keyboard looking progressively
+  // weirder as you get further from zoom level 0. I am not going to fix this issue
+  // now, because `scale` is stored in the state of `PdfUI`, and this PR is already
+  // too massive. This can be a follow-up issue.
+  return {
+    x: _.clamp(pageCoords.x, 0, pageCoordsBounds.width - Constants.ANNOTATION_ICON_SIDE_LENGTH),
+    y: _.clamp(pageCoords.y, 0, pageCoordsBounds.height - Constants.ANNOTATION_ICON_SIDE_LENGTH)
+  };
+};
 
 // PdfViewer is a smart component that renders the entire
 // PDF view of the Reader SPA. It displays the PDF with UI
 // as well as the sidebar for comments and document information.
-export default class PdfViewer extends React.Component {
-  constructor(props) {
-    super(props);
-    this.state = {
-      comments: [],
-      editingComment: null,
-      isAddingComment: false,
-      isPlacingNote: false,
-      onSaveCommentAdd: null,
-      onConfirmDelete: null
-    };
-
-    this.props.annotationStorage.setOnCommentChange(this.onCommentChange);
-  }
-
-  onCommentChange = (documentId = this.props.doc.id) => {
-    this.setState({
-      comments: [...this.props.annotationStorage.getAnnotationByDocumentId(documentId)]
-    });
-  }
-
-  closeConfirmDeleteModal = () => {
-    this.setState({
-      onConfirmDelete: null
-    });
-  }
-
-  onDeleteComment = (uuid) => {
-    let onConfirmDelete = () => {
-      this.props.annotationStorage.deleteAnnotation(
-        this.props.doc.id,
-        uuid
-      );
-      this.closeConfirmDeleteModal();
-    };
-
-    this.setState({
-      onConfirmDelete
-    });
-  }
-
-  onEditComment = (uuid) => {
-    if (!this.isUserActive()) {
-      this.setState({
-        editingComment: uuid
-      });
-    }
-  }
-
-  onSaveCommentEdit = (comment) => {
-    this.props.annotationStorage.getAnnotation(
-      this.props.doc.id,
-      this.state.editingComment
-    ).then((annotation) => {
-      annotation.comment = comment;
-      this.props.annotationStorage.editAnnotation(
-        this.props.doc.id,
-        annotation.uuid,
-        annotation
-      );
-    });
-    this.onCancelCommentEdit();
-  }
-
-  onCancelCommentEdit = () => {
-    this.setState({
-      editingComment: null
-    });
-  }
-
-  onAddComment = () => {
-    if (!this.isUserActive()) {
-      this.setState({
-        isPlacingNote: true
-      });
-    }
-  }
-
-  placeComment = (pageNumber, coordinates) => {
-    if (this.state.isPlacingNote) {
-      let annotation = {
-        class: 'Annotation',
-        page: pageNumber,
-        'type': 'point',
-        'x': coordinates.xPosition,
-        'y': coordinates.yPosition
-      };
-
-      this.setState({
-        isAddingComment: true,
-        isPlacingNote: false,
-        onSaveCommentAdd: this.onSaveCommentAdd(annotation, pageNumber)
-      });
-    }
-  }
-
-  onSaveCommentAdd = (annotation, pageNumber) => (content) => {
-    annotation.comment = content;
-    this.props.annotationStorage.addAnnotation(
-      this.props.doc.id,
-      pageNumber,
-      annotation
-    );
-    this.onCancelCommentAdd();
-  }
-
-  onCancelCommentAdd = () => {
-    this.setState({
-      isAddingComment: false,
-      isPlacingNote: false,
-      onSaveCommentAdd: null
-    });
-  }
-
-  onIconMoved = (uuid, coordinates, page) => {
-    this.props.annotationStorage.getAnnotation(
-      this.props.doc.id,
-      uuid
-    ).then((annotation) => {
-      annotation.x = coordinates.x;
-      annotation.y = coordinates.y;
-      annotation.page = page;
-      this.props.annotationStorage.editAnnotation(
-        this.props.doc.id,
-        annotation.uuid,
-        annotation
-      );
-    });
-  }
-
-  // Returns true if the user is doing some action. i.e.
-  // editing a note, adding a note, or placing a comment.
-  isUserActive = () => this.state.editingComment !== null ||
-      this.state.isAddingComment ||
-      this.state.isPlacingNote
-
+export class PdfViewer extends React.Component {
+  // eslint-disable-next-line max-statements
   keyListener = (event) => {
-    if (!this.isUserActive()) {
-      if (event.key === 'ArrowLeft') {
-        this.props.onPreviousPdf();
-      }
-      if (event.key === 'ArrowRight') {
-        this.props.onNextPdf();
-      }
+    if (isUserEditingText()) {
+      return;
     }
-  }
 
-  onCommentClick = (uuid) => {
-    let comments = [...this.state.comments];
+    const direction = {
+      ArrowLeft: Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.LEFT,
+      ArrowRight: Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.RIGHT,
+      ArrowUp: Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.UP,
+      ArrowDown: Constants.MOVE_ANNOTATION_ICON_DIRECTIONS.DOWN
+    }[event.key];
 
-    comments = comments.map((comment) => {
-      let copy = { ...comment };
+    if (this.props.isPlacingAnnotation && direction >= 0) {
+      const { pageIndex, ...origCoords } = this.props.placingAnnotationIconPageCoords;
+      const constrainedCoords = getNextAnnotationIconPageCoords(
+        direction,
+        this.props.placingAnnotationIconPageCoords,
+        this.props.pages,
+        this.selectedDoc().content_url,
+        this.selectedDoc().rotation
+      );
 
-      if (comment.uuid === uuid) {
-        copy.selected = true;
-      } else {
-        copy.selected = false;
+      if (!_.isEqual(origCoords, constrainedCoords)) {
+        this.props.showPlaceAnnotationIcon(pageIndex, constrainedCoords);
       }
 
-      return copy;
-    });
-    this.setState({ comments });
+      // If the user is placing an annotation, we do not also want
+      // to be panning around on the page view with the arrow keys.
+      event.preventDefault();
+
+      return;
+    }
+
+    if (event.key === 'ArrowLeft') {
+      window.analyticsEvent(
+        CATEGORIES.VIEW_DOCUMENT_PAGE,
+        ACTION_NAMES.VIEW_PREVIOUS_DOCUMENT,
+        INTERACTION_TYPES.KEYBOARD_SHORTCUT
+      );
+      this.props.showPdf(this.getPrevDocId())();
+      this.props.stopPlacingAnnotation(INTERACTION_TYPES.KEYBOARD_SHORTCUT);
+    }
+    if (event.key === 'ArrowRight') {
+      window.analyticsEvent(
+        CATEGORIES.VIEW_DOCUMENT_PAGE,
+        ACTION_NAMES.VIEW_NEXT_DOCUMENT,
+        INTERACTION_TYPES.KEYBOARD_SHORTCUT
+      );
+      this.props.showPdf(this.getNextDocId())();
+      this.props.stopPlacingAnnotation(INTERACTION_TYPES.KEYBOARD_SHORTCUT);
+    }
   }
 
   componentDidUpdate = () => {
-    if (this.state.isAddingComment) {
+    if (this.props.placedButUnsavedAnnotation) {
       let commentBox = document.getElementById('addComment');
 
       commentBox.focus();
     }
   }
-  componentDidMount = () => {
-    this.onCommentChange();
 
+  componentDidMount() {
+    this.props.handleSelectCurrentPdf(this.selectedDocId());
     window.addEventListener('keydown', this.keyListener);
+
+    if (shouldFetchAppeal(this.props.appeal, this.props.match.params.vacolsId)) {
+      this.props.fetchAppealDetails(this.props.match.params.vacolsId);
+    }
   }
 
   componentWillUnmount = () => {
@@ -188,59 +139,90 @@ export default class PdfViewer extends React.Component {
   }
 
   componentWillReceiveProps = (nextProps) => {
-    if (nextProps.doc.id !== this.props.doc.id) {
-      this.onCommentChange(nextProps.doc.id);
+    const nextDocId = Number(nextProps.match.params.docId);
+
+    if (nextDocId !== this.selectedDocId()) {
+      this.props.handleSelectCurrentPdf(nextDocId);
     }
   }
 
+  selectedDocIndex = () => (
+    _.findIndex(this.props.documents, { id: this.selectedDocId() })
+  )
+
+  selectedDoc = () => (
+    this.props.documents[this.selectedDocIndex()]
+  )
+
+  selectedDocId = () => Number(this.props.match.params.docId)
+
+  getPrevDoc = () => _.get(this.props.documents, [this.selectedDocIndex() - 1])
+  getNextDoc = () => _.get(this.props.documents, [this.selectedDocIndex() + 1])
+
+  getPrevDocId = () => _.get(this.getPrevDoc(), 'id')
+  getNextDocId = () => _.get(this.getNextDoc(), 'id')
+
+  getPrefetchFiles = () => _.compact(_.map([this.getPrevDoc(), this.getNextDoc()], 'content_url'))
+
+  showClaimsFolderNavigation = () => this.props.allDocuments.length > 1;
+
+  shouldComponentUpdate(nextProps, nextState) {
+    const getRenderProps = (props) => _.omit(props, 'pages');
+
+    return !(_.isEqual(this.state, nextState) && _.isEqual(getRenderProps(this.props), getRenderProps(nextProps)));
+  }
+
   render() {
+    const doc = this.selectedDoc();
+
+    // If we don't have a currently selected document, we
+    // shouldn't render anything. On the next tick we dispatch
+    // the action to redux that populates the documents and then we
+    // render
+    // TODO(jd): We should refactor and potentially create the store
+    // with the documents already added
+    if (!doc) {
+      return null;
+    }
+
     return (
       <div>
         <div className="cf-pdf-page-container">
           <PdfUI
-            comments={this.state.comments}
-            doc={this.props.doc}
-            file={this.props.file}
+            doc={doc}
+            prefetchFiles={this.getPrefetchFiles()}
+            prefetchFiles={this.getPrefetchFiles()}
             pdfWorker={this.props.pdfWorker}
             id="pdf"
+            documentPathBase={this.props.documentPathBase}
             onPageClick={this.placeComment}
-            onShowList={this.props.onShowList}
-            onNextPdf={this.props.onNextPdf}
-            onPreviousPdf={this.props.onPreviousPdf}
+            prevDocId={this.getPrevDocId()}
+            nextDocId={this.getNextDocId()}
+            showPdf={this.props.showPdf}
+            showClaimsFolderNavigation={this.showClaimsFolderNavigation()}
             onViewPortCreated={this.onViewPortCreated}
             onViewPortsCleared={this.onViewPortsCleared}
-            onCommentClick={this.onCommentClick}
-            scrollToComment={this.props.scrollToComment}
-            onCommentScrolledTo={this.props.onCommentScrolledTo}
-            onIconMoved={this.onIconMoved}
           />
           <PdfSidebar
-            doc={this.props.doc}
-            editingComment={this.state.editingComment}
-            onAddComment={this.onAddComment}
-            isAddingComment={this.state.isAddingComment}
-            comments={this.state.comments}
-            onSaveCommentAdd={this.state.onSaveCommentAdd}
-            onCancelCommentAdd={this.onCancelCommentAdd}
-            onSaveCommentEdit={this.onSaveCommentEdit}
-            onCancelCommentEdit={this.onCancelCommentEdit}
-            onDeleteComment={this.onDeleteComment}
-            onEditComment={this.onEditComment}
+            doc={doc}
             onJumpToComment={this.props.onJumpToComment}
           />
         </div>
-        {this.state.onConfirmDelete && <Modal
+        {this.props.deleteAnnotationModalIsOpenFor && <Modal
           buttons={[
             { classNames: ['cf-modal-link', 'cf-btn-link'],
               name: 'Cancel',
-              onClick: this.closeConfirmDeleteModal
+              onClick: this.props.closeAnnotationDeleteModal
             },
             { classNames: ['usa-button', 'usa-button-secondary'],
               name: 'Confirm delete',
-              onClick: this.state.onConfirmDelete
+              onClick: () => this.props.deleteAnnotation(
+                this.props.match.params.docId,
+                this.props.deleteAnnotationModalIsOpenFor
+              )
             }
           ]}
-          closeHandler={this.closeConfirmDeleteModal}
+          closeHandler={this.props.closeAnnotationDeleteModal}
           title="Delete Comment">
           Are you sure you want to delete this comment?
         </Modal>}
@@ -249,15 +231,41 @@ export default class PdfViewer extends React.Component {
   }
 }
 
+const mapStateToProps = (state) => ({
+  documents: getFilteredDocuments(state.readerReducer),
+  appeal: state.readerReducer.appeal,
+  pages: state.readerReducer.pages,
+  ..._.pick(state.readerReducer, 'placingAnnotationIconPageCoords'),
+  ..._.pick(state.readerReducer.ui, 'deleteAnnotationModalIsOpenFor', 'placedButUnsavedAnnotation'),
+  ..._.pick(state.readerReducer.ui.pdf, 'scrollToComment', 'hidePdfSidebar', 'isPlacingAnnotation')
+});
+
+const mapDispatchToProps = (dispatch) => ({
+  ...bindActionCreators({
+    showPlaceAnnotationIcon,
+    closeAnnotationDeleteModal,
+    deleteAnnotation,
+    stopPlacingAnnotation,
+    fetchAppealDetails
+  }, dispatch),
+
+  handleSelectCurrentPdf: (docId) => dispatch(selectCurrentPdf(docId))
+});
+
+export default connect(
+  mapStateToProps, mapDispatchToProps
+)(PdfViewer);
+
 PdfViewer.propTypes = {
-  annotationStorage: PropTypes.object,
   doc: PropTypes.object,
-  file: PropTypes.string.isRequired,
-  label: PropTypes.string,
   pdfWorker: PropTypes.string,
   scrollToComment: PropTypes.shape({
-    id: React.PropTypes.number
+    id: PropTypes.number
   }),
+  deleteAnnotationModalIsOpenFor: PropTypes.number,
   onScrollToComment: PropTypes.func,
-  onCommentScrolledTo: PropTypes.func
+  documents: PropTypes.array.isRequired,
+  allDocuments: PropTypes.array.isRequired,
+  selectCurrentPdf: PropTypes.func,
+  hidePdfSidebar: PropTypes.bool
 };

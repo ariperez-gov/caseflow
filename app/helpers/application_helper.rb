@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 # rubocop:disable Metrics/ModuleLength
 module ApplicationHelper
+  # :nocov:
   MISSING_ICON = <<-HTML.freeze
     <svg width="55" height="55" class="cf-icon-missing"
     xmlns="http://www.w3.org/2000/svg" viewBox="0 0 55 55">
@@ -133,4 +134,9 @@ module ApplicationHelper
     return full_path unless route
     ["", route[:controller], route[:action]].join("/")
   end
+
+  def print_link
+    link_to "Print", "#", onclick: "window.print()"
+  end
+  # :nocov:
 end

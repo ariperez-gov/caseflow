@@ -1,6 +1,9 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
+
 import EstablishClaimProgressBar from './EstablishClaimProgressBar';
 import EstablishClaimToolbar from './EstablishClaimToolbar';
+import StatusMessage from '../../components/StatusMessage';
 
 const PARSE_INT_RADIX = 10;
 
@@ -13,19 +16,35 @@ export default class EstablishClaimComplete extends React.Component {
       buttonText,
       checklist,
       firstHeader,
-      secondHeader,
+      handleAlert,
+      handleAlertClear,
       totalCasesCompleted,
       totalCasesToComplete,
-      employeeCount
+      employeeCount,
+      veteranName
     } = this.props;
 
-    let casesAssigned, employeeCountInt,
-      hasQuotaReached, quotaReachedMessage, totalCases;
+    let availableTasksMessage, casesAssigned, employeeCountInt,
+      hasQuotaReached, quotaReachedMessage, secondHeader, totalCases;
 
-    quotaReachedMessage = <h2 className="cf-msg-screen-deck">
-      Way to go! 💻💪🇺🇸<br/>
-      You have completed all of the total cases assigned to you today.
-    </h2>;
+    availableTasksMessage = availableTasks ? 'You can now establish the next claim or return to your Work History.' :
+                            'You can now close Caseflow or return to your Work History.';
+
+    secondHeader = <span>{veteranName}'s claim has been processed. <br />
+      {availableTasksMessage}
+    </span>;
+
+    quotaReachedMessage = () => {
+      if (hasQuotaReached) {
+        return <span>
+            <h2>Way to go!</h2> 💪💻🇺🇸<br/>
+            <h2 className ="cf-msg-screen-deck cf-success-emoji-text">
+             You have completed all of the total cases assigned to you today.
+            </h2>
+          </span>;
+      }
+    };
+
 
     totalCases = totalCasesToComplete + totalCasesCompleted;
     employeeCountInt = parseInt(employeeCount, PARSE_INT_RADIX);
@@ -39,27 +58,21 @@ export default class EstablishClaimComplete extends React.Component {
         isConfirmation={true}
       />
 
-      <div
-        id="certifications-generate"
-        className="cf-app-msg-screen cf-app-segment cf-app-segment--alt">
+    <StatusMessage
+        title={firstHeader}
+        leadMessageList={[secondHeader]}
+        checklist={checklist}
+        messageText={hasQuotaReached && quotaReachedMessage()}
+        type="success"
+        />
 
-      <h1 className="cf-success cf-msg-screen-heading">{firstHeader}</h1>
-      <h2 className="cf-msg-screen-deck">
-        {secondHeader}
-      </h2>
-
-      {hasQuotaReached && quotaReachedMessage}
-
-      <ul className="cf-list-checklist cf-left-padding">
-        {checklist.map((listValue) => <li key={listValue}>
-          <span className="cf-icon-success--bg"></span>{listValue}</li>)}
-      </ul>
-    </div>
     <EstablishClaimToolbar
       availableTasks={availableTasks}
       buttonText={buttonText}
       casesAssigned={casesAssigned}
       totalCasesCompleted={totalCasesCompleted}
+      handleAlert={handleAlert}
+      handleAlertClear={handleAlertClear}
     />
     </div>;
   }
@@ -72,7 +85,7 @@ EstablishClaimComplete.propTypes = {
   checklist: PropTypes.array,
   employeeCount: PropTypes.string,
   firstHeader: PropTypes.string,
-  secondHeader: PropTypes.string,
   totalCasesAssigned: PropTypes.number,
-  totalCasesCompleted: PropTypes.number
+  totalCasesCompleted: PropTypes.number,
+  veteranName: PropTypes.string
 };

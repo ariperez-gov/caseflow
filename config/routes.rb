@@ -2,12 +2,13 @@ Rails.application.routes.draw do
   # The priority is based upon order of creation: first created -> highest priority.
   # See how all your routes lay out with "rake routes".
 
-  resources :sessions, only: [:new, :create]
+  resources :sessions, only: [:new, :update]
   resources :certifications, path_names: { new: "new/:vacols_id" } do
     get 'pdf', on: :member
     get 'form9_pdf', on: :member
     post 'confirm', on: :member
     put 'update_v2', on: :member
+    post 'certify_v2', on: :member
   end
 
   # These routes are here so Certification v2 SPA can be launched if the
@@ -20,12 +21,21 @@ Rails.application.routes.draw do
 
   resources :certification_cancellations, only: [:show, :create]
 
+  namespace :api do
+    namespace :v1 do
+      resources :appeals, only: :index
+      resources :jobs, only: :create
+    end
+  end
+
   scope path: "/dispatch" do
-    # TODO(jd): Make this its own controller action that looks at the user's roles
-    # and redirects accordingly
     get "/", to: redirect("/dispatch/establish-claim")
     get 'missing-decision', to: 'establish_claims#unprepared_tasks'
+    get 'canceled', to: 'establish_claims#canceled_tasks'
+    get 'work-assignments', to: 'establish_claims#work_assignments'
     patch 'employee-count/:count', to: 'establish_claims#update_employee_count'
+
+    resources :user_quotas, path: "/user-quotas", only: :update
 
     resources :establish_claims,
               path: "/establish-claim",
@@ -48,45 +58,61 @@ Rails.application.routes.draw do
     get :pdf, on: :member
     patch 'mark-as-read', on: :member
     resources :annotation, only: [:create, :destroy, :update]
+    resources :tag, only: [:create, :destroy]
   end
 
   namespace :reader do
-    resources :appeal, only: [] do
+    get 'appeal/veteran-id', to: "appeal#find_appeals_by_veteran_id",
+      constraints: lambda{ |req| req.env["HTTP_VETERAN_ID"] =~ /[a-zA-Z0-9]{2,12}/ }
+    resources :appeal, only: [:show, :index] do
       resources :documents, only: [:show, :index]
+      resources :claims_folder_searches, only: :create
     end
   end
 
+  namespace :hearings do
+    resources :dockets, only: [:index, :show]
+    resources :worksheets, only: [:update, :show], param: :hearing_id
+    resources :appeals, only: [:update], param: :appeal_id
+  end
+  get 'hearings/:hearing_id/worksheet', to: "hearings/worksheets#show", as: 'hearing_worksheet'
+
+  resources :hearings, only: [:update]
+
   patch "certifications" => "certifications#create"
 
-  namespace :admin do
-    post "establish-claim", to: "establish_claims#create"
-    get "establish-claim", to: "establish_claims#show"
+
+  match '/intake/:any' => 'intakes#index', via: [:get]
+  resources :intakes, path: "intake", only: [:index, :create]
+
+  namespace :intake do
+    resources :ramp_intakes, path: "ramp", only: [:update]
   end
 
-  resources :functions, only: :index
-  patch '/functions/change', to: 'functions#change'
-
-  resources :offices, only: :index
-
   get "health-check", to: "health_checks#show"
+  get "dependencies-check", to: "dependencies_checks#show"
   get "login" => "sessions#new"
   get "logout" => "sessions#destroy"
 
   get 'whats-new' => 'whats_new#show'
 
   get 'certification/stats(/:interval)', to: 'certification_stats#show', as: 'certification_stats'
+  get 'certification_v2/stats(/:interval)', to: 'certification_v2_stats#show', as: 'certification_v2_stats'
   get 'dispatch/stats(/:interval)', to: 'dispatch_stats#show', as: 'dispatch_stats'
   get 'stats', to: 'stats#show'
 
   get "styleguide", to: "styleguide#show"
 
-  get 'help' => 'help#show'
-  get 'help/dispatch' => 'help#dispatch'
-  
+  get 'help' => 'help#index'
+  get 'dispatch/help' => 'help#dispatch'
+  get 'certification/help' => 'help#certification'
+  get 'reader/help' => 'help#reader'
+  get 'hearings/help' => 'help#hearings'
+
 
   # alias root to help; make sure to keep this below the canonical route so url_for works
-  root 'help#show'
-    
+  root 'help#index'
+
   mount PdfjsViewer::Rails::Engine => "/pdfjs", as: 'pdfjs'
 
   get "unauthorized" => "application#unauthorized"
@@ -97,19 +123,25 @@ Rails.application.routes.draw do
 
   # :nocov:
   namespace :test do
-    # Only allow data_setup routes if TEST_USER is set
-    if ENV["TEST_USER_ID"]
-      resources :setup, only: [:index]
-      post "setup-uncertify-appeal" => "setup#uncertify_appeal"
-      post "setup-appeal-location-date-reset" => "setup#appeal_location_date_reset"
-      get "setup-delete-test-data" => "setup#delete_test_data"
-    end
-
     if ApplicationController.dependencies_faked?
       resources :users, only: [:index]
-      post "/set-user/:id", to: "users#set_user", as: "set_user"
-      post "/set-end-products", to: "users#set_end_products", as: 'set_end_products'
+      post "/set_user/:id", to: "users#set_user", as: "set_user"
+      post "/set_end_products", to: "users#set_end_products", as: 'set_end_products'
     end
   end
+
+  require "sidekiq/web"
+  require "sidekiq/cron/web"
+  Sidekiq::Web.use Rack::Auth::Basic do |username, password|
+    # Protect against timing attacks:
+        # - See https://codahale.com/a-lesson-in-timing-attacks/
+        # - See https://thisdata.com/blog/timing-attacks-against-string-comparison/
+        # - Use & (do not use &&) so that it doesn't short circuit.
+        # - Use digests to stop length information leaking (see also ActiveSupport::SecurityUtils.variable_size_secure_compare)
+    ActiveSupport::SecurityUtils.secure_compare(::Digest::SHA256.hexdigest(username), ::Digest::SHA256.hexdigest(ENV["SIDEKIQ_USERNAME"])) &
+      ActiveSupport::SecurityUtils.secure_compare(::Digest::SHA256.hexdigest(password), ::Digest::SHA256.hexdigest(ENV["SIDEKIQ_PASSWORD"]))
+  end
+  mount Sidekiq::Web, at: "/sidekiq"
+
   # :nocov:
 end

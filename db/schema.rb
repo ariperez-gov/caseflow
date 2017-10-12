@@ -11,20 +11,40 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema.define(version: 20170413191800) do
+ActiveRecord::Schema.define(version: 20171005184519) do
 
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
   create_table "annotations", force: :cascade do |t|
     t.integer "document_id", null: false
-    t.string  "comment"
+    t.string  "comment",     null: false
     t.integer "page"
     t.integer "x"
     t.integer "y"
+    t.integer "user_id"
   end
 
   add_index "annotations", ["document_id"], name: "index_annotations_on_document_id", using: :btree
+  add_index "annotations", ["user_id"], name: "index_annotations_on_user_id", using: :btree
+
+  create_table "api_keys", force: :cascade do |t|
+    t.string "consumer_name", null: false
+    t.string "key_digest",    null: false
+  end
+
+  add_index "api_keys", ["consumer_name"], name: "index_api_keys_on_consumer_name", unique: true, using: :btree
+  add_index "api_keys", ["key_digest"], name: "index_api_keys_on_key_digest", unique: true, using: :btree
+
+  create_table "appeal_views", force: :cascade do |t|
+    t.integer  "user_id",        null: false
+    t.integer  "appeal_id",      null: false
+    t.datetime "created_at",     null: false
+    t.datetime "updated_at",     null: false
+    t.datetime "last_viewed_at"
+  end
+
+  add_index "appeal_views", ["appeal_id", "user_id"], name: "index_appeal_views_on_appeal_id_and_user_id", unique: true, using: :btree
 
   create_table "appeals", force: :cascade do |t|
     t.string  "vacols_id",                                                                    null: false
@@ -92,6 +112,24 @@ ActiveRecord::Schema.define(version: 20170413191800) do
     t.string   "form9_type"
     t.string   "vacols_hearing_preference"
     t.string   "hearing_preference"
+    t.string   "certifying_office"
+    t.string   "certifying_username"
+    t.string   "certifying_official_name"
+    t.string   "certifying_official_title"
+    t.string   "certification_date"
+    t.boolean  "poa_matches"
+    t.boolean  "poa_correct_in_vacols"
+    t.boolean  "poa_correct_in_bgs"
+    t.string   "bgs_rep_address_line_1"
+    t.string   "bgs_rep_address_line_2"
+    t.string   "bgs_rep_address_line_3"
+    t.string   "bgs_rep_city"
+    t.string   "bgs_rep_country"
+    t.string   "bgs_rep_state"
+    t.string   "bgs_rep_zip"
+    t.boolean  "v2"
+    t.boolean  "loading_data"
+    t.boolean  "loading_data_failed"
   end
 
   add_index "certifications", ["user_id"], name: "index_certifications_on_user_id", using: :btree
@@ -105,6 +143,13 @@ ActiveRecord::Schema.define(version: 20170413191800) do
     t.string   "email_ro_id"
     t.string   "email_recipient"
     t.string   "ep_code"
+  end
+
+  create_table "claims_folder_searches", force: :cascade do |t|
+    t.integer  "user_id"
+    t.integer  "appeal_id"
+    t.string   "query"
+    t.datetime "created_at"
   end
 
   create_table "document_views", force: :cascade do |t|
@@ -123,6 +168,13 @@ ActiveRecord::Schema.define(version: 20170413191800) do
   end
 
   add_index "documents", ["vbms_document_id"], name: "index_documents_on_vbms_document_id", unique: true, using: :btree
+
+  create_table "documents_tags", id: false, force: :cascade do |t|
+    t.integer "document_id", null: false
+    t.integer "tag_id",      null: false
+  end
+
+  add_index "documents_tags", ["document_id", "tag_id"], name: "index_documents_tags_on_document_id_and_tag_id", unique: true, using: :btree
 
   create_table "form8s", force: :cascade do |t|
     t.integer  "certification_id"
@@ -191,9 +243,53 @@ ActiveRecord::Schema.define(version: 20170413191800) do
     t.datetime "created_at",                                    null: false
     t.datetime "updated_at",                                    null: false
     t.string   "certifying_official_title_specify_other"
+    t.string   "hearing_preference"
+    t.date     "nod_date"
+    t.date     "form9_date"
+    t.date     "ssoc_date_1"
+    t.date     "ssoc_date_2"
+    t.date     "ssoc_date_3"
   end
 
   add_index "form8s", ["certification_id"], name: "index_form8s_on_certification_id", using: :btree
+
+  create_table "hearings", force: :cascade do |t|
+    t.integer "user_id"
+    t.integer "appeal_id"
+    t.string  "vacols_id",             null: false
+    t.string  "witness"
+    t.string  "contentions"
+    t.string  "evidence"
+    t.string  "military_service"
+    t.string  "comments_for_attorney"
+  end
+
+  create_table "intakes", force: :cascade do |t|
+    t.integer  "detail_id",           null: false
+    t.string   "detail_type",         null: false
+    t.integer  "user_id",             null: false
+    t.string   "veteran_file_number"
+    t.datetime "started_at"
+  end
+
+  add_index "intakes", ["veteran_file_number"], name: "index_intakes_on_veteran_file_number", using: :btree
+
+  create_table "ramp_elections", force: :cascade do |t|
+    t.string "veteran_file_number", null: false
+    t.date   "notice_date",         null: false
+    t.date   "receipt_date"
+    t.string "option_selected"
+  end
+
+  add_index "ramp_elections", ["veteran_file_number"], name: "index_ramp_elections_on_veteran_file_number", using: :btree
+
+  create_table "tags", force: :cascade do |t|
+    t.string   "text"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  add_index "tags", ["text"], name: "index_tags_on_text", unique: true, using: :btree
 
   create_table "tasks", force: :cascade do |t|
     t.integer  "appeal_id",             null: false
@@ -209,16 +305,58 @@ ActiveRecord::Schema.define(version: 20170413191800) do
     t.string   "comment"
     t.string   "outgoing_reference_id"
     t.string   "aasm_state"
+    t.datetime "prepared_at"
   end
+
+  create_table "team_quotas", force: :cascade do |t|
+    t.date     "date",       null: false
+    t.string   "task_type",  null: false
+    t.integer  "user_count"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  add_index "team_quotas", ["date", "task_type"], name: "index_team_quotas_on_date_and_task_type", unique: true, using: :btree
+
+  create_table "user_quotas", force: :cascade do |t|
+    t.integer  "team_quota_id",     null: false
+    t.integer  "user_id",           null: false
+    t.datetime "created_at",        null: false
+    t.datetime "updated_at",        null: false
+    t.integer  "locked_task_count"
+  end
+
+  add_index "user_quotas", ["team_quota_id", "user_id"], name: "index_user_quotas_on_team_quota_id_and_user_id", unique: true, using: :btree
 
   create_table "users", force: :cascade do |t|
     t.string "station_id", null: false
     t.string "css_id",     null: false
     t.string "full_name"
     t.string "email"
+    t.string "roles",                   array: true
   end
 
   add_index "users", ["station_id", "css_id"], name: "index_users_on_station_id_and_css_id", unique: true, using: :btree
 
+  create_table "worksheet_issues", force: :cascade do |t|
+    t.integer  "appeal_id"
+    t.string   "vacols_sequence_id"
+    t.boolean  "reopen",             default: false
+    t.boolean  "vha",                default: false
+    t.boolean  "allow",              default: false
+    t.boolean  "deny",               default: false
+    t.boolean  "remand",             default: false
+    t.boolean  "dismiss",            default: false
+    t.string   "program"
+    t.string   "name"
+    t.string   "levels"
+    t.string   "description"
+    t.boolean  "from_vacols"
+    t.datetime "deleted_at"
+  end
+
+  add_index "worksheet_issues", ["deleted_at"], name: "index_worksheet_issues_on_deleted_at", using: :btree
+
+  add_foreign_key "annotations", "users"
   add_foreign_key "certifications", "users"
 end

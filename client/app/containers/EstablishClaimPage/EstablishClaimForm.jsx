@@ -1,8 +1,8 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 
 import Button from '../../components/Button';
 import TextField from '../../components/TextField';
-import DropDown from '../../components/DropDown';
 import Checkbox from '../../components/Checkbox';
 import DateSelector from '../../components/DateSelector';
 
@@ -11,11 +11,6 @@ import * as Constants from '../../establishClaim/constants';
 import { getStationOfJurisdiction } from '../../establishClaim/selectors';
 
 import { connect } from 'react-redux';
-
-export const MODIFIER_OPTIONS = [
-  '170',
-  '172'
-];
 
 export class EstablishClaimForm extends React.Component {
   formattedStationOfJurisdiction() {
@@ -33,18 +28,18 @@ export class EstablishClaimForm extends React.Component {
       decisionDate,
       establishClaimForm,
       handleSubmit,
-      handleCancelTask,
+      handleToggleCancelTaskModal,
       handleFieldChange,
       handleBackToDecisionReview,
-      backToDecisionReviewText,
-      validModifiers
+      backToDecisionReviewText
     } = this.props;
 
 
     return <div>
       <form noValidate id="end_product">
         <div className="cf-app-segment cf-app-segment--alt">
-          <h1>Route Claim: Create End Product</h1>
+          <h1>Route Claim</h1>
+           <h2>Create End Product</h2>
           <TextField
            label="Benefit Type"
            name="BenefitType"
@@ -63,12 +58,10 @@ export class EstablishClaimForm extends React.Component {
            readOnly={true}
            value={claimLabelValue}
           />
-          <DropDown
+          <TextField
            label="Modifier"
            name="endProductModifier"
-           options={validModifiers}
-           onChange={handleFieldChange('endProductModifier')}
-           readOnly={validModifiers.length === 1}
+           readOnly={true}
            value={establishClaimForm.endProductModifier}
           />
           <DateSelector
@@ -108,7 +101,7 @@ export class EstablishClaimForm extends React.Component {
         <div className="cf-push-right">
           <Button
             name="Cancel"
-            onClick={handleCancelTask}
+            onClick={handleToggleCancelTaskModal}
             classNames={['cf-btn-link', 'cf-adjacent-buttons']}
           />
           <Button
@@ -128,13 +121,13 @@ EstablishClaimForm.propTypes = {
   claimLabelValue: PropTypes.string.isRequired,
   decisionDate: PropTypes.string.isRequired,
   handleBackToDecisionReview: PropTypes.func.isRequired,
+  handleToggleCancelTaskModal: PropTypes.func.isRequired,
   backToDecisionReviewText: PropTypes.string.isRequired,
   handleFieldChange: PropTypes.func.isRequired,
   handleSubmit: PropTypes.func.isRequired,
   stationKey: PropTypes.string.isRequired,
   regionalOfficeKey: PropTypes.string.isRequired,
-  regionalOfficeCities: PropTypes.object.isRequired,
-  validModifiers: PropTypes.arrayOf(PropTypes.string).isRequired
+  regionalOfficeCities: PropTypes.object.isRequired
 };
 
 /*
@@ -142,29 +135,28 @@ EstablishClaimForm.propTypes = {
  * application state should be passed in as props to
  * the rendered component.
  */
-const mapStateToProps = (state, ownProps) => {
-  return {
-    establishClaimForm: state.establishClaimForm,
-    stationOfJurisdiction: getStationOfJurisdiction(
-      state.specialIssues,
-      ownProps.stationKey
-    )
-  };
-};
+const mapStateToProps = (state, ownProps) => ({
+  establishClaimForm: state.establishClaimForm,
+  stationOfJurisdiction: getStationOfJurisdiction(
+    state.specialIssues,
+    ownProps.stationKey
+  )
+});
 
-const mapDispatchToProps = (dispatch) => {
-  return {
-    handleFieldChange: (field) => (value) => {
-      dispatch({
-        type: Constants.CHANGE_ESTABLISH_CLAIM_FIELD,
-        payload: {
-          field,
-          value
-        }
-      });
-    }
-  };
-};
+const mapDispatchToProps = (dispatch) => ({
+  handleToggleCancelTaskModal: () => {
+    dispatch({ type: Constants.TOGGLE_CANCEL_TASK_MODAL });
+  },
+  handleFieldChange: (field) => (value) => {
+    dispatch({
+      type: Constants.CHANGE_ESTABLISH_CLAIM_FIELD,
+      payload: {
+        field,
+        value
+      }
+    });
+  }
+});
 
 /*
  * Creates a component that's connected to the Redux store

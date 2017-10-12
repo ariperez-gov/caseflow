@@ -1,5 +1,7 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 import TextField from '../components/TextField';
+import _ from 'lodash';
 
 const DEFAULT_TEXT = 'mm/dd/yyyy';
 // A regex that will match as much of a mm/dd/yyyy date as possible.
@@ -7,18 +9,18 @@ const DEFAULT_TEXT = 'mm/dd/yyyy';
 const DATE_REGEX = /[0,1](?:\d(?:\/(?:[0-3](?:\d(?:\/(?:\d{0,4})?)?)?)?)?)?/;
 
 export default class DateSelector extends React.Component {
-
   dateFill = (initialValue) => {
-    let value = initialValue;
+    let value = initialValue || '';
+    let propsValue = this.props.value || '';
 
     // If the user added characters we append a '/' before putting
     // it through the regex. If this spot doesn't accept a '/' then
     // the regex test will strip it. Otherwise, the user doesn't have
     // to type a '/'. If the user removed characters we check if the
     // last character is a '/' and remove it for them.
-    if (value.length > this.props.value.length) {
+    if (value.length > propsValue.length) {
       value = `${value}/`;
-    } else if (this.props.value.charAt(this.props.value.length - 1) === '/') {
+    } else if (propsValue.charAt(propsValue.length - 1) === '/') {
       value = value.substr(0, value.length - 1);
     }
 
@@ -43,8 +45,9 @@ export default class DateSelector extends React.Component {
       required,
       type,
       validationError,
-      value
-    } = this.props;
+      value,
+      ...passthroughProps
+    } = _.omit(this.props, 'onChange');
 
     return <TextField
       errorMessage={errorMessage}
@@ -57,6 +60,7 @@ export default class DateSelector extends React.Component {
       onChange={this.dateFill}
       placeholder={DEFAULT_TEXT}
       required={required}
+      {...passthroughProps}
     />;
 
   }

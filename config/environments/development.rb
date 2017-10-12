@@ -40,6 +40,9 @@ Rails.application.configure do
   config.s3_enabled = !ENV['AWS_ACCESS_KEY_ID'].nil?
   config.s3_bucket_name = "caseflow-cache"
 
+  # Set to true to get the documents from efolder running locally on port 4000.
+  config.use_efolder_locally = false
+
   # Raises error for missing translations
   # config.action_view.raise_on_missing_translations = true
   #
@@ -47,9 +50,14 @@ Rails.application.configure do
 
   ENV["METRICS_USERNAME"] ||= "caseflow"
   ENV["METRICS_PASSWORD"] ||= "caseflow"
-  # Uncomment to enable certification v2.
-  # TODO: remove this when we set it up with roles/featureflag
-  # ENV["ENABLE_CERTIFICATION_V2"] = "true"
+  ENV["SIDEKIQ_USERNAME"] ||= "caseflow"
+  ENV["SIDEKIQ_PASSWORD"] ||= "caseflow"
+
+  # eFolder API URL to retrieve appeal documents
+  config.efolder_url = "http://localhost:4000"
+  config.efolder_key = "token"
+
+  config.google_analytics_account = "UA-74789258-5"
 
   # configure pry
   silence_warnings do

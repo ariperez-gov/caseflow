@@ -22,28 +22,32 @@ Clerical errors have the potential to delay the resolution of a veteran's appeal
 
 ![Screenshot of Caseflow Certification (Fake data, No PII here)](certification-screenshot.png "Caseflow Certification")
 
-## Initial Setup (MacOSX)
+[View application information on Caseflow Certification](https://github.com/department-of-veterans-affairs/caseflow/blob/master/docs/certification.md).
+
+## Setup
 Make sure you have [rbenv](https://github.com/rbenv/rbenv) and [nvm](https://github.com/creationix/nvm) installed.
 
 Then run the following:
 
-> $ rbenv install 2.2.4
+    rbenv install 2.2.4
 
-> $ gem install bundler
+    gem install bundler
 
 You'll need ChromeDriver, Postgres, and Redis if you don't have them.
 
-> $ brew install postgresql
+    brew install postgresql
 
-> $ brew install redis
+    brew install redis
 
-> $ brew install chromedriver
+    brew install chromedriver
 
-You may want to have Redis and Postgres run on startup. Let brew tell you how to do that:
+You need to have Redis, Postgres, and Chromedriver running to run Caseflow. (Chromedriver is for the Capybara tests.) Let brew tell you how to do that:
 
-> $ brew info redis
+    brew info redis
 
-> $ brew info postgresql
+    brew info postgresql
+
+    brew info chromedriver
 
 Install [pdftk](https://www.pdflabs.com/tools/pdftk-the-pdf-toolkit/pdftk_server-2.02-mac_osx-10.11-setup.pkg)
 
@@ -52,46 +56,32 @@ The version on the website does not work on recent versions of OSX (Sierra and E
 
 For the frontend, you'll need to install Node and the relevant npm modules
 
-> $ nvm install v6.10.2
+    # Use the version of Node defined in .nvmrc.
+    nvm use
 
-> $ cd client && nvm use && npm install
+    cd client && yarn
 
 ## Running Caseflow in isolation
 To try Caseflow without going through the hastle of connecting to VBMS and VACOLS, just tell bundler
 to skip production gems when installing.
 
-`$ bundle install --without production staging`
+    bundle install --without production staging
 
 Setup and seed the DB
 
-> $ rake db:setup
+    rake db:setup
 
-And by default, Rails will run in the development environment, which will mock out data. To start the application servers:
+And by default, Rails will run in the development environment, which will mock out data. For an improved development experience with faster iteration, the application by default runs in "hot mode". This will cause Javascript changes to immediately show up on the page on save, without having to reload the page. You can start the application via:
 
-`$ foreman start -f Procfile.dev`
+    foreman start
 
 Or to run the rails server and frontend webpack server separately:
 
-`$ rails s`
+    REACT_ON_RAILS_ENV=hot bundle exec rails s
 
-`$ cd client && nvm use && npm run dev`
+    cd client && nvm use && yarn run dev
 
 You can access the site at [http://localhost:3000](http://localhost:3000), which takes you to the help page.
-
-## Certification (Dev Mode)
-
-To log in, you can use the following credentials:
-
-Username: "DSUSER"
-Password: "DSUSER"
-
-To get to the various pages in the workflow we have a set of five URLs of dummy data.
-
-[http://localhost:3000/certifications/new/123C](http://localhost:3000/certifications/new/123C) is an appeal that is ready to certify.
-[http://localhost:3000/certifications/new/456C](http://localhost:3000/certifications/new/456C) is an appeal with mismatched docs.
-[http://localhost:3000/certifications/new/789C](http://localhost:3000/certifications/new/789C) is an appeal that is already certified.
-[http://localhost:3000/certifications/new/000ERR](http://localhost:3000/certifications/new/000ERR) is an appeal that raises a vbms error.
-[http://localhost:3000/certifications/new/001ERR](http://localhost:3000/certifications/new/001ERR) is an appeal that is missing data.
 
 ## Roles
 
@@ -121,7 +111,7 @@ First you'll need to install the libraries required to connect to the VACOLS Ora
 
 3) Setup both packages according to the Oracle documentation:
 ```
-export DYLD_LIBRARY_PATH=/opt/oracle/instantclient_11_2`
+export OCI_DIR=/opt/oracle/instantclient_12_1
 cd /opt/oracle/instantclient_11_2
 sudo ln -s libclntsh.dylib.11.1 libclntsh.dylib
 ```
@@ -142,14 +132,14 @@ for Fedora based OS.
 
  1. Setup both packages according to the Oracle documentation:
 ```sh
-export LD_LIBRARY_PATH=/opt/oracle/instantclient_11_2`
+export LD_LIBRARY_PATH=/opt/oracle/instantclient_11_2 <-- Not sure if this is still valid. It has recently changed for MAC. See above.
 cd /opt/oracle/instantclient_11_2
 sudo ln -s libclntsh.so.12.1 libclntsh.so
 ```
 
 ### Run the app
 Now you'll be able to install the gems required to run the app connected to VBMS and VACOLS:
-`$ bundle install --with staging`
+    bundle install --with staging
 
 Set the development VACOLS credentials as environment variables.
 (ask a team member for them)
@@ -159,7 +149,7 @@ export VACOLS_PASSWORD=secret_password
 ```
 
 Finally, just run Rails in the staging environment!
-`$ rails s -e staging`
+    rails s -e staging
 
 ## Changing between test users
 Select 'Switch User' from the dropdown or navigate to
@@ -175,50 +165,78 @@ add more links and users as needed.
 ## Running tests
 
 To run the test suite:
-`$ rake`
 
-For parallelized tests:
-`$ rake parallel:setup[4]`
+    rake
 
-`$ rake ci:all`
+### Parallelized tests
+You'll be able to get through the tests a lot faster if you put all your CPUs to work.
+Parallel test categories are split up by category:
+- `unit`: Any test that isn't a feature test, since these are :lightning: fast
+- `other`: Any feature test that is not in a subfolder
+- CATEGORY: The other feature tests are split by subfolders in `spec/feature/`. Examples are `certification` and `reader`
 
-## Feature Toggle
+To set your environment up for parallel testing run:
 
-To enable and disable features using `rails c`. Example usage:
+    rake spec:parallel:setup
+
+To run the test suite in parallel:
+
+    rake spec:parallel
+
+You can run any one of the parallel categories on its own via (where `CATEGORY` is `unit`, `certification`, etc):
+
+    rake spec:parallel:CATEGORY
+
+## Feature Toggle and Functions
+
+See [Caseflow Commons](https://github.com/department-of-veterans-affairs/caseflow-commons)
+
+## Out of Service
+
+To enable and disable 'Out of Service' feature using `rails c`. Example usage:
 
 ```
-# users
-user1 = User.new(regional_office: "RO03")
-user2 = User.new(regional_office: "RO04")
+# enable globally
+Rails.cache.write("out_of_service", true)
 
-# enable for everyone
-FeatureToggle.enable!(:apple)
-=> true
-FeatureToggle.enabled?(:apple, user1)
-=> true
+# enable for certification only
+Rails.cache.write("certification_out_of_service", true)
 
-# enable for a list of regional offices
-FeatureToggle.enable!(:apple, regional_offices: ["RO03", "RO08"])
-=> true
+# enable for dispatch only
+Rails.cache.write("dispatch_out_of_service", true)
 
-# add more regional offices to the same feature
-FeatureToggle.enable!(:apple, regional_offices: ["RO03", "RO09"])
-=> true
+# enable for hearings only
+Rails.cache.write("hearing_prep_out_of_service", true)
 
-# view the details
-FeatureToggle.details_for(:apple)
-=> { :regional_offices => ["RO03", "RO08", "RO09"] }
+# enable for reader only
+Rails.cache.write("reader_out_of_service", true)
 
-# check if the feature is enabled for a given user
-FeatureToggle.enabled?(:apple, user1)
-=> true
-FeatureToggle.enabled?(:apple, user2)
-=> false
-
-# disable a few regional offices
-FeatureToggle.disable!(:apple, regional_offices: ["RO03", "RO09"])
-=> true
-FeatureToggle.details_for(:apple)
-=> { :regional_offices =>["RO08"] }
+# to disable, e.g.
+Rails.cache.write("certification_out_of_service", false)
 ```
 
+## Degraded Service
+We show a "Degraded Service" banner across all Caseflow applications automatically when [Caseflow Monitor](https://github.com/department-of-veterans-affairs/caseflow-monitor) detects that our dependencies may be down. To enable this banner manually, overriding our automatic checks, run the following code from the Rails console:
+```
+Rails.cache.write(:degraded_service_banner, :always_show)
+```
+
+When the dependencies have recovered, switch the banner back to automatic mode:
+```
+Rails.cache.write(:degraded_service_banner, :auto)
+```
+
+*DANGER*: If Caseflow Monitor is incorrectly reporting a dependency issue, you can disable the "Degraded Service" banner with the following code:
+```
+Rails.cache.write(:degraded_service_banner, :never_show)
+```
+
+When Caseflow Monitor starts working again, switch the banner back to automatic mode:
+```
+Rails.cache.write(:degraded_service_banner, :auto)
+```
+
+# Support
+![BrowserStack logo](./browserstack-logo.png)
+
+Thanks to [BrowserStack](https://www.browserstack.com/) for providing free support to this open-source project.

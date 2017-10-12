@@ -1,10 +1,14 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
+import { connect } from 'react-redux';
 
 import Table from '../../components/Table';
 import Button from '../../components/Button';
+import Alert from '../../components/Alert';
 import { formatDate } from '../../util/DateUtil';
 import ApiUtil from '../../util/ApiUtil';
-import { connect } from 'react-redux';
+import * as Constants from '../../establishClaim/constants';
+
 
 export class AssociatePage extends React.Component {
 
@@ -113,7 +117,7 @@ export class AssociatePage extends React.Component {
   render() {
     let {
       handleSubmit,
-      handleCancelTask,
+      handleToggleCancelTaskModal,
       handleBackToDecisionReview,
       backToDecisionReviewText,
       hasAvailableModifers,
@@ -123,7 +127,8 @@ export class AssociatePage extends React.Component {
     let alert, title;
 
     if (this.props.hasAvailableModifers) {
-      title = <h1>Route Claim: Existing End Product(s)</h1>;
+      title = <span> <h1>Route Claim</h1>
+             <h2> Existing End Product(s)</h2></span>;
       alert = <div><h3 className="usa-alert-heading">Existing EP</h3>
         <p className="usa-alert-text">We found one or more existing EP(s)
           created within 30 days of this decision date.
@@ -132,7 +137,8 @@ export class AssociatePage extends React.Component {
         </p>
       </div>;
     } else {
-      title = <h1>Route Claim: Create End Product</h1>;
+      title = <span><h1>Route Claim</h1>
+              <h2>Create End Product</h2></span>;
       alert = <div><h3 className="usa-alert-heading">
           Existing EP, all EP & Claim Label Modifiers in use
         </h3>
@@ -150,11 +156,10 @@ export class AssociatePage extends React.Component {
     return <div>
       <div className="cf-app-segment cf-app-segment--alt">
         {title}
-        <div className="usa-alert usa-alert-warning">
-          <div className="usa-alert-body">
-            {alert}
-          </div>
-        </div>
+        <Alert
+          type="warning">
+          {alert}
+        </Alert>
         <div className="usa-grid-full">
           <Table
             columns={this.getEndProductColumns()}
@@ -174,7 +179,7 @@ export class AssociatePage extends React.Component {
         <div className="cf-push-right">
           <Button
             name="Cancel"
-            onClick={handleCancelTask}
+            onClick={handleToggleCancelTaskModal}
             classNames={['cf-btn-link', 'cf-adjacent-buttons']}
           />
           <Button
@@ -196,20 +201,27 @@ AssociatePage.propTypes = {
   handleAlert: PropTypes.func.isRequired,
   handleAlertClear: PropTypes.func.isRequired,
   handleBackToDecisionReview: PropTypes.func.isRequired,
+  handleToggleCancelTaskModal: PropTypes.func.isRequired,
+  history: PropTypes.object.isRequired,
   backToDecisionReviewText: PropTypes.string.isRequired,
   handleSubmit: PropTypes.func.isRequired,
   hasAvailableModifers: PropTypes.bool.isRequired,
   task: PropTypes.object.isRequired
 };
 
-const mapStateToProps = (state) => {
-  return {
-    specialIssues: state.specialIssues
-  };
-};
+const mapStateToProps = (state) => ({
+  specialIssues: state.specialIssues
+});
+
+const mapDispatchToProps = (dispatch) => ({
+  handleToggleCancelTaskModal: () => {
+    dispatch({ type: Constants.TOGGLE_CANCEL_TASK_MODAL });
+  }
+});
 
 const ConnectedEstablishClaimAssociateEP = connect(
-    mapStateToProps
+  mapStateToProps,
+  mapDispatchToProps
 )(AssociatePage);
 
 export default ConnectedEstablishClaimAssociateEP;

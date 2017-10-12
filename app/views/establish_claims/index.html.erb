@@ -1,0 +1,7 @@
+<%= react_component("BaseContainer", props: {
+  page: "CaseWorkerIndex",
+  availableTasks: tasks.any_assignable_to?(current_user),
+  buttonText: start_text,
+  userQuota: user_quota && user_quota.to_hash,
+  currentUserHistoricalTasks: current_user_historical_tasks.map(&:to_hash),
+}) %>

@@ -1,30 +1,13 @@
 require "ostruct"
 
-class VBMSCaseflowLogger
-  def self.log(event, data)
-    case event
-    when :request
-      status = data[:response_code]
-      name = data[:request].class.name
-
-      if status != 200
-        Rails.logger.error(
-          "VBMS HTTP Error #{status} " \
-          "(#{name}) #{data[:response_body]}"
-        )
-      end
-    end
-  end
-end
-
 # frozen_string_literal: true
 class Fakes::AppealRepository
   class << self
-    attr_accessor :document_records, :issue_records
-    attr_accessor :end_product_claim_id
+    attr_accessor :issue_records
     attr_accessor :vacols_dispatch_update
     attr_accessor :location_updated_for
-    attr_accessor :certified_appeal, :uploaded_form8, :uploaded_form8_appeal
+    attr_accessor :certified_appeal
+    cattr_accessor :appeal_records
 
     def records
       @records ||= {}
@@ -33,7 +16,32 @@ class Fakes::AppealRepository
     def clean!
       @records = {}
     end
+
+    def load_user_case_assignments_from_vacols(_css_id)
+      appeal_records || Fakes::Data::AppealData.default_records
+    end
   end
+
+  READER_REDACTED_DOCS = [
+    "VA 8 Certification of Appeal",
+    "Supplemental Statement of the Case",
+    "CAPRI",
+    "Notice of Disagreement",
+    "Rating Decision - Codesheet",
+    "Rating Decision - Narrative",
+    "Correspondence",
+    "VA 21-526EZ, Fully Developed Claim",
+    "STR - Medical",
+    "Military Personnel Record",
+    "Private Medical Treatment Record",
+    "Map-D Development Letter",
+    "Third Party Correspondence",
+    "VA 9 Appeal to Board of Appeals",
+    "Correspondence",
+    "VA 21-4142 Authorization to Disclose Information to VA",
+    "VA 21-4138 Statement in Support of Claim",
+    "VA Memo"
+  ].freeze
 
   RAISE_VBMS_ERROR_ID = "raise_vbms_error_id".freeze
   RASIE_MULTIPLE_APPEALS_ERROR_ID = "raise_multiple_appeals_error".freeze
@@ -50,18 +58,13 @@ class Fakes::AppealRepository
     appeal
   end
 
-  def self.certify(appeal)
-    @certified_appeal = appeal
-    VBMSCaseflowLogger.log(:request, response_code: 500)
+  def self.vacols_db_connection_active?
+    true
   end
 
-  def self.establish_claim!(claim_hash:, veteran_hash:)
-    Rails.logger.info("Submitting claim to VBMS...")
-    Rails.logger.info("Veteran data:\n #{veteran_hash}")
-    Rails.logger.info("Claim data:\n #{claim_hash}")
-
-    # return fake end product
-    OpenStruct.new(claim_id: @end_product_claim_id || Generators::Appeal.generate_external_id)
+  def self.certify(appeal:, certification:)
+    @certification = certification
+    @certified_appeal = appeal
   end
 
   def self.update_vacols_after_dispatch!(appeal:, vacols_note:)
@@ -71,15 +74,6 @@ class Fakes::AppealRepository
   def self.update_location_after_dispatch!(appeal:)
     return if appeal.full_grant?
     self.location_updated_for = appeal
-  end
-
-  def self.upload_document_to_vbms(appeal, form8)
-    @uploaded_form8 = form8
-    @uploaded_form8_appeal = appeal
-  end
-
-  def self.clean_document(_location)
-    # noop
   end
 
   def self.raise_vbms_error_if_necessary(record)
@@ -104,6 +98,13 @@ class Fakes::AppealRepository
     true
   end
 
+  def self.appeals_ready_for_hearing(vbms_id)
+    Appeal.where(vbms_id: vbms_id).select { |a| a.decision_date.nil? && a.form9_date }
+  end
+
+  def self.close!(*)
+  end
+
   def self.load_vacols_data_by_vbms_id(appeal:, decision_type:)
     Rails.logger.info("Load faked VACOLS data for appeal VBMS ID: #{appeal.vbms_id}")
     Rails.logger.info("Decision Type:\n#{decision_type}")
@@ -126,25 +127,20 @@ class Fakes::AppealRepository
     appeal.assign_from_vacols(record[1])
   end
 
-  def self.fetch_documents_for(appeal)
-    (document_records || {})[appeal.vbms_id] || @documents || []
-  end
+  def self.appeals_by_vbms_id(vbms_id)
+    Rails.logger.info("Load faked VACOLS appeals data for vbms id: #{vbms_id}")
 
-  def self.fetch_document_file(document)
-    path =
-      case document.vbms_document_id
-      when "1"
-        File.join(Rails.root, "lib", "pdfs", "VA8.pdf")
-      when "2"
-        File.join(Rails.root, "lib", "pdfs", "Formal_Form9.pdf")
-      when "3"
-        File.join(Rails.root, "lib", "pdfs", "Informal_Form9.pdf")
-      when "4"
-        File.join(Rails.root, "lib", "pdfs", "FakeDecisionDocument.pdf")
-      else
-        File.join(Rails.root, "lib", "pdfs", "KnockKnockJokes.pdf")
+    return_records = MetricsService.record "load appeals for vbms_id #{vbms_id}" do
+      records.select { |_, r| r[:vbms_id] == vbms_id }
+    end
+
+    fail ActiveRecord::RecordNotFound if return_records.empty?
+
+    return_records.map do |vacols_id, r|
+      Appeal.find_or_create_by(vacols_id: vacols_id).tap do |appeal|
+        appeal.assign_from_vacols(r)
       end
-    IO.binread(path)
+    end
   end
 
   def self.remands_ready_for_claims_establishment
@@ -155,10 +151,6 @@ class Fakes::AppealRepository
     []
   end
 
-  def self.uncertify(_appeal)
-    # noop
-  end
-
   def self.issues(vacols_id)
     (issue_records || {})[vacols_id] || []
   end
@@ -166,19 +158,27 @@ class Fakes::AppealRepository
   ## ALL SEED SCRIPTS BELOW THIS LINE ------------------------------
   # TODO: pull seed scripts into seperate object/module?
 
-  def self.seed!
+  # rubocop:disable Metrics/CyclomaticComplexity
+  # rubocop:disable Metrics/PerceivedComplexity
+  def self.seed!(app_name: nil)
     return if Rails.env.test?
 
-    seed_certification_data!
-    seed_establish_claim_data!
-    seed_reader_data!
+    # In demo mode, on app bootup (rails console or server) the app_name will be nil and we
+    # want to load *all* of the seeds
+    # In development mode, we call these on every request, so we only want to load the ones
+    # relevant to our current app
+    seed_certification_data! if app_name.nil? || app_name == "certification"
+    seed_establish_claim_data! if app_name.nil? || app_name == "dispatch-arc"
+    seed_reader_data! if app_name.nil? || app_name == "reader"
   end
 
   def self.certification_documents
     [
       Generators::Document.build(type: "NOD", category_procedural: true),
       Generators::Document.build(type: "SOC"),
-      Generators::Document.build(type: "Form 9", category_medical: true)
+      Generators::Document.build(type: "Form 9", category_medical: true),
+      Generators::Document.build(type: "SSOC"),
+      Generators::Document.build(type: "SSOC", received_at: 10.days.ago)
     ]
   end
 
@@ -207,18 +207,42 @@ class Fakes::AppealRepository
   end
 
   def self.seed_appeal_ready_to_certify!
-    nod, soc, form9 = certification_documents
+    nod, soc, form9, ssoc1, ssoc2 = certification_documents
+
+    form9.vbms_document_id = "2"
 
     Generators::Appeal.build(
       vacols_id: "123C",
-      vbms_id: "1111",
+      vbms_id: "111223333S",
       vacols_record: {
         template: :ready_to_certify,
         nod_date: nod.received_at,
-        soc_date: soc.received_at,
-        form9_date: form9.received_at
+        soc_date: soc.received_at + 2.days,
+        form9_date: form9.received_at,
+        ssoc_dates: [ssoc1.received_at, ssoc2.received_at],
+        appellant_ssn: "111223333"
       },
-      documents: [nod, soc, form9]
+      documents: [nod, soc, form9, ssoc1, ssoc2]
+    )
+  end
+
+  def self.seed_appeal_no_bgs_address!
+    nod, soc, form9, ssoc1, ssoc2 = certification_documents
+
+    form9.vbms_document_id = "2"
+
+    Generators::Appeal.build(
+      vacols_id: "125C",
+      vbms_id: "111225555S",
+      vacols_record: {
+        template: :ready_to_certify,
+        nod_date: nod.received_at,
+        soc_date: soc.received_at + 2.days,
+        form9_date: form9.received_at,
+        ssoc_dates: [ssoc1.received_at, ssoc2.received_at],
+        appellant_ssn: "111225555"
+      },
+      documents: [nod, soc, form9, ssoc1, ssoc2]
     )
   end
 
@@ -227,11 +251,13 @@ class Fakes::AppealRepository
 
     Generators::Appeal.build(
       vacols_id: "456C",
+      vbms_id: "111224444S",
       vacols_record: {
         template: :ready_to_certify,
         nod_date: nod.received_at,
         soc_date: soc.received_at,
-        form9_date: form9.received_at
+        form9_date: form9.received_at,
+        appellant_ssn: "111224444"
       },
       documents: [nod, soc]
     )
@@ -287,6 +313,7 @@ class Fakes::AppealRepository
 
   def self.seed_certification_data!
     seed_appeal_ready_to_certify!
+    seed_appeal_no_bgs_address!
     seed_appeal_mismatched_documents!
     seed_appeal_already_certified!
     seed_appeal_ready_to_certify_with_informal_form9!
@@ -294,29 +321,146 @@ class Fakes::AppealRepository
     seed_appeal_not_ready!
   end
 
-  def self.reader_documents
+  def self.static_reader_documents
     [
       Generators::Document.build(vbms_document_id: 1, type: "NOD", category_procedural: true),
       Generators::Document.build(vbms_document_id: 2, type: "SOC", category_medical: true),
       Generators::Document.build(vbms_document_id: 3, type: "Form 9",
                                  category_medical: true, category_procedural: true),
-      Generators::Document.build(vbms_document_id: 4, type: "BVA Decision", received_at: 7.days.ago,
-                                 category_other: true),
-      Generators::Document.build(vbms_document_id: 5, type: "BVA Decision", received_at: 8.days.ago,
+      Generators::Document.build(
+        vbms_document_id: 5,
+        type: "This is a very long document type let's see what it does to the UI!",
+        received_at: 7.days.ago,
+        category_other: true),
+      Generators::Document.build(vbms_document_id: 6, type: "BVA Decision", received_at: 8.days.ago,
                                  category_medical: true, category_procedural: true, category_other: true)
     ]
   end
 
+  def self.random_reader_documents(num_documents, seed = Random::DEFAULT.seed)
+    seeded_random = Random.new(seed)
+    (0..num_documents).to_a.reduce([]) do |acc, number|
+      acc << Generators::Document.build(
+        vbms_document_id: number,
+        type: Caseflow::DocumentTypes::TYPES.values[seeded_random.rand(Caseflow::DocumentTypes::TYPES.length)],
+        category_procedural: seeded_random.rand(10) == 1,
+        category_medical: seeded_random.rand(10) == 1,
+        category_other: seeded_random.rand(10) == 1)
+    end
+  end
+
+  def self.redacted_reader_documents
+    READER_REDACTED_DOCS.each_with_index.map do |doc_type, index|
+      Generators::Document.build(
+        vbms_document_id: (100 + index),
+        type: doc_type
+      )
+    end
+  end
+
+  # rubocop:disable Metrics/MethodLength
   def self.seed_reader_data!
     Generators::Appeal.build(
       vacols_id: "reader_id1",
-      vbms_id: "reader_id1",
+      vbms_id: "DEMO123",
       vacols_record: {
         template: :ready_to_certify,
         veteran_first_name: "Joe",
-        veteran_last_name: "Smith"
+        veteran_last_name: "Smith",
+        type: "Court Remand",
+        cavc: true,
+        date_assigned: "2013-05-17 00:00:00 UTC".to_datetime,
+        date_received: "2013-05-31 00:00:00 UTC".to_datetime,
+        signed_date: nil,
+        docket_number: "13 11-265",
+        regional_office_key: "RO13"
       },
-      documents: reader_documents
+      issues: [Generators::Issue.build(vacols_id: "reader_id1"),
+               Generators::Issue.build(disposition: "Osteomyelitis",
+                                       levels: ["Osteomyelitis"],
+                                       description: [
+                                         "15 - Compensation",
+                                         "26 - Osteomyelitis"
+                                       ],
+                                       program_description: "06 - Medical",
+                                       vacols_id: "reader_id2")],
+      documents: static_reader_documents
     )
+    Generators::Appeal.build(
+      vacols_id: "reader_id2",
+      vbms_id: "DEMO456",
+      vacols_record: {
+        template: :ready_to_certify,
+        veteran_first_name: "Joe",
+        veteran_last_name: "Smith",
+        type: "Remand",
+        cavc: false,
+        date_assigned: "2013-05-17 00:00:00 UTC".to_datetime,
+        date_received: "2013-05-31 00:00:00 UTC".to_datetime,
+        signed_date: nil,
+        docket_number: "13 11-265",
+        regional_office_key: "RO13"
+      },
+      issues: [Generators::Issue.build(
+        disposition: "Remanded",
+        levels: ["Left knee", "Right knee", "Cervical strain"],
+        description: [
+          "15 - Service connection",
+          "13 - Left knee",
+          "14 - Right knee",
+          "22 - Cervical strain"
+        ],
+        program_description: "06 - Medical",
+        vacols_id: "reader_id2")],
+      documents: random_reader_documents(1000, "reader_id2".hash)
+    )
+    Generators::Appeal.build(
+      vacols_id: "reader_id3",
+      vbms_id: "DEMO789",
+      vacols_record: {
+        template: :ready_to_certify,
+        veteran_first_name: "Joe",
+        veteran_last_name: "Smith",
+        type: "Remand",
+        cavc: false,
+        date_assigned: "2013-05-17 00:00:00 UTC".to_datetime,
+        date_received: "2013-05-31 00:00:00 UTC".to_datetime,
+        signed_date: nil,
+        docket_number: "13 11-265",
+        regional_office_key: "RO13"
+      },
+      issues: [Generators::Issue.build(vacols_id: "reader_id1")],
+      documents: redacted_reader_documents
+    )
+    Generators::Appeal.build(
+      vacols_id: "reader_id4",
+      vbms_id: "DEMO123",
+      vacols_record: {
+        template: :ready_to_certify,
+        veteran_first_name: "Joe",
+        veteran_last_name: "Smith",
+        type: "Court Remand",
+        cavc: true,
+        date_assigned: "2013-05-17 00:00:00 UTC".to_datetime,
+        date_received: "2013-05-31 00:00:00 UTC".to_datetime,
+        signed_date: nil,
+        docket_number: "13 11-265",
+        regional_office_key: "RO13"
+      },
+      issues: [Generators::Issue.build(vacols_id: "reader_id1"),
+               Generators::Issue.build(disposition: "Osteomyelitis",
+                                       levels: ["Osteomyelitis"],
+                                       description: [
+                                         "15 - Compensation",
+                                         "26 - Osteomyelitis"
+                                       ],
+                                       program_description: "06 - Medical",
+                                       vacols_id: "reader_id2")],
+      documents: static_reader_documents
+    )
+  end
+
+  def self.aod(_vacols_id)
+    true
   end
 end

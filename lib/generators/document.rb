@@ -15,7 +15,6 @@ class Generators::Document
 
       # received_at is always a Date when coming from VBMS
       attrs[:received_at] = attrs[:received_at].to_date
-
       Document.new(attrs || {})
     end
   end

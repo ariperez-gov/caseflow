@@ -1,8 +1,10 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
 import BaseForm from '../BaseForm';
 
 import Checkbox from '../../components/Checkbox';
 import Button from '../../components/Button';
+import Alert from '../../components/Alert';
 import TextareaField from '../../components/TextareaField';
 import FormField from '../../util/FormField';
 import { formatDate } from '../../util/DateUtil';
@@ -72,17 +74,18 @@ export class EstablishClaimNote extends BaseForm {
     }, []);
   }
 
-  headerText() {
-    let noteFor = [];
-
+  headerVacols() {
     if (this.props.displayVacolsNote) {
-      noteFor.push('Confirm VACOLS Update');
-    }
-    if (this.props.displayVbmsNote) {
-      noteFor.push('Add VBMS Note');
+      return 'Confirm VACOLS Update';
     }
 
-    return `Route Claim: ${noteFor.join(', ')}`;
+  }
+
+  headerVbms() {
+    if (this.props.displayVbmsNote) {
+      return 'Add VBMS Note';
+    }
+
   }
 
   vacolsNoteText() {
@@ -101,7 +104,7 @@ export class EstablishClaimNote extends BaseForm {
       <p>To ensure this claim is routed correctly, Caseflow will make the following
       updates to VACOLS:</p>
 
-      <ol className="cf-bold-ordered-list">
+      <ol>
         <li type="A">
           <div>
             <span className="inline-label">Change location to: </span>
@@ -150,7 +153,7 @@ export class EstablishClaimNote extends BaseForm {
 
       <div className="route-claim-confirmNote-wrapper">
         <Checkbox
-          label="I confirm that I have created a VBMS note to help route this claim"
+          label="I confirm that I have created a VBMS note to help route this claim."
           fullWidth={true}
           name="confirmNote"
           onChange={this.handleFieldChange('noteForm', 'confirmBox')}
@@ -169,25 +172,25 @@ export class EstablishClaimNote extends BaseForm {
   render() {
     return <div>
         <div className="cf-app-segment cf-app-segment--alt">
-          <h2>{this.headerText()}</h2>
+          <h1>Route Claim</h1><h2>{this.headerVacols()}</h2>
 
-          {this.props.showNotePageAlert && <div className="usa-alert usa-alert-warning">
-            <div className="usa-alert-body">
-              <div>
-                <h3 className="usa-alert-heading">Cannot edit end product</h3>
-                <p className="usa-alert-text">
-                  You cannot navigate to the previous page because the end
-                  product has already been created and cannot be edited.
-                  Please proceed with adding the note below in VBMS.
-                </p>
-              </div>
-            </div>
-          </div>}
-          <ol>
+          {this.props.showNotePageAlert && <Alert
+            title="Cannot edit end product"
+            type="warning">
+            You cannot navigate to the previous page because the end
+            product has already been created and cannot be edited.
+            Please proceed with adding the note below in VBMS.
+          </Alert>}
+
+          <ol className="cf-bold-ordered-list">
             {this.props.displayVacolsNote &&
-            <li className={this.props.displayVbmsNote ? 'cf-bottom-border' : ''}>
+            <li className={this.props.displayVbmsNote}>
               {this.vacolsSection()}
             </li>}
+          </ol>
+          {(this.props.displayVacolsNote && this.props.displayVbmsNote) && <div className="cf-bottom-border"></div>}
+          <h2>{this.headerVbms()}</h2>
+          <ol start={this.props.displayVacolsNote ? '2' : ''} className="cf-bold-ordered-list">
             {this.props.displayVbmsNote &&
             <li>{this.vbmsSection()}</li>}
           </ol>

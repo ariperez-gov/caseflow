@@ -10,6 +10,7 @@ class Generators::Appeal
       }
     end
 
+    # rubocop:disable Metrics/MethodLength
     def vacols_record_default_attrs
       last_name = generate_last_name
 
@@ -20,14 +21,23 @@ class Generators::Appeal
         veteran_first_name: generate_first_name,
         veteran_middle_initial: "A",
         veteran_last_name: last_name,
+        outcoder_first_name: generate_first_name,
+        outcoder_middle_initial: "B",
+        outcoder_last_name: generate_last_name,
         appellant_first_name: generate_first_name,
         appellant_middle_initial: "A",
         appellant_last_name: last_name,
         appellant_relationship: "Child",
         regional_office_key: "RO13",
-        decision_date: 7.days.ago
+        decision_date: 7.days.ago,
+        form9_date: 11.days.ago,
+        veteran_date_of_birth: 47.years.ago,
+        appellant_city: "Huntingdon",
+        appellant_state: "TN",
+        docket_number: 4198
       }
     end
+    # rubocop:enable Metrics/MethodLength
 
     # This is a method and not a constant because Datetime values need
     # to be evaluated lazily. Would be nice to have a better solution
@@ -46,21 +56,69 @@ class Generators::Appeal
         certified: {
           certification_date: 1.day.ago
         },
+        form9_not_submitted: {
+          decision_date: nil,
+          form9_date: nil
+        },
+        pending_hearing: {
+          status: "Active",
+          decision_date: nil,
+          nod_date: 1.month.ago,
+          soc_date: 15.days.ago,
+          ssoc_dates: [8.days.ago, 9.days.ago],
+          issues: [
+            { disposition: :nil, program: :compensation,
+              vacols_sequence_id: 1,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :knee }
+          ]
+        },
         remand_decided: {
           status: "Remand",
           disposition: "Remanded",
           decision_date: 7.days.ago,
+          docket_number: "13 12-225",
           issues: [
-            { disposition: :remanded, program: :compensation, type: :service_connection, category: :knee }
+            { disposition: :remanded, program: :compensation,
+              vacols_sequence_id: 1,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :knee },
+            { disposition: :denied, program: :compensation,
+              vacols_sequence_id: 2,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :elbow }
           ]
         },
         partial_grant_decided: {
           status: "Remand",
           disposition: "Allowed",
           decision_date: 7.days.ago,
+          docket_number: "13 11-263",
           issues: [
-            { disposition: :remanded, program: :compensation, type: :service_connection, category: :knee },
-            { disposition: :allowed, program: :compensation, type: :service_connection, category: :knee }
+            { disposition: :remanded, program: :compensation,
+              vacols_sequence_id: 1,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :knee },
+            { disposition: :allowed, program: :compensation,
+              vacols_sequence_id: 2,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :elbow },
+            { disposition: :denied, program: :compensation,
+              vacols_sequence_id: 3,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :shoulder }
           ]
         },
         full_grant_decided: {
@@ -69,8 +127,18 @@ class Generators::Appeal
           disposition: "Allowed",
           outcoding_date: 2.days.ago,
           decision_date: 7.days.ago,
+          docket_number: "13 11-265",
           issues: [
-            { disposition: :allowed, program: :compensation, type: :service_connection, category: :knee }
+            { disposition: :allowed, program: :compensation,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :elbow },
+            { disposition: :denied, program: :compensation,
+              type: {
+                name: :service_connection,
+                label: "Service Connection"
+              }, category: :shoulder }
           ]
         }
       }
@@ -99,41 +167,53 @@ class Generators::Appeal
     #
     def build(attrs = {})
       attrs = default_attrs.merge(attrs)
-
       vacols_record = extract_vacols_record(attrs)
-      documents = attrs.delete(:documents)
-      issues = attrs.delete(:issues)
-      cast_datetime_fields(attrs)
+      appeal = Appeal.find_or_initialize_by(vacols_id: attrs[:vacols_id])
       inaccessible = attrs.delete(:inaccessible)
 
-      appeal = Appeal.new(attrs)
+      cast_datetime_fields(attrs)
+      setup_vbms_documents(attrs)
+      set_vacols_issues(appeal: appeal, vacols_record: vacols_record, attrs: attrs)
 
-      vacols_record[:vbms_id] = appeal.vbms_id
+      vacols_record[:vbms_id] = attrs[:vbms_id]
+      vacols_record = vacols_record.merge(attrs.select { |attr| Appeal.vacols_field?(attr) })
 
-      issues_from_template = vacols_record.delete(:issues)
-      set_vacols_issues(appeal: appeal,
-                        issues: issues || issues_from_template)
+      set_vacols_record(appeal: appeal, vacols_record: vacols_record)
 
-      Fakes::AppealRepository.records ||= {}
-      Fakes::AppealRepository.records[appeal.vacols_id] = vacols_record
-
-      Fakes::AppealRepository.document_records ||= {}
-      Fakes::AppealRepository.document_records[appeal.vbms_id] = documents
+      non_vacols_attrs = attrs.reject { |attr| Appeal.vacols_field?(attr) }
+      appeal.attributes = non_vacols_attrs
 
       add_inaccessible_appeal(appeal) if inaccessible
+      Generators::Veteran.build(file_number: appeal.sanitized_vbms_id)
 
       appeal
     end
 
     private
 
-    def set_vacols_issues(appeal:, issues:)
-      (issues ||= []).map! do |issue|
+    def set_vacols_record(appeal:, vacols_record:)
+      Fakes::AppealRepository.records ||= {}
+      Fakes::AppealRepository.records[appeal.vacols_id] = vacols_record
+    end
+
+    def setup_vbms_documents(attrs)
+      documents = attrs.delete(:documents)
+
+      Fakes::VBMSService.document_records ||= {}
+      Fakes::VBMSService.document_records[attrs[:vbms_id]] = documents
+    end
+
+    def set_vacols_issues(appeal:, vacols_record:, attrs:)
+      issues = attrs.delete(:issues)
+      issues_from_template = vacols_record.delete(:issues)
+      issues ||= issues_from_template
+
+      appeal.issues = (issues || []).map do |issue|
         issue.is_a?(Hash) ? Generators::Issue.build(issue) : issue
       end
 
       Fakes::AppealRepository.issue_records ||= {}
-      Fakes::AppealRepository.issue_records[appeal.vacols_id] = issues
+      Fakes::AppealRepository.issue_records[appeal.vacols_id] = appeal.issues
     end
 
     def add_inaccessible_appeal(appeal)
@@ -158,7 +238,6 @@ class Generators::Appeal
                                     end
 
       template = vacols_record_templates[template_key] || {}
-
       vacols_record_default_attrs.merge(template).merge(vacols_record)
     end
   end

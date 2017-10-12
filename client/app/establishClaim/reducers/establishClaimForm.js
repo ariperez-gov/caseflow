@@ -1,6 +1,7 @@
 import * as Constants from '../constants';
 import ReducerUtil from '../../util/ReducerUtil';
 import { validModifiers } from '../util';
+import update from 'immutability-helper';
 
 export const getEstablishClaimFormInitialState = (props) => {
   let initialModifier;
@@ -16,7 +17,7 @@ export const getEstablishClaimFormInitialState = (props) => {
     stationOfJurisdiction: null,
     endProductModifier: initialModifier,
     gulfWarRegistry: false,
-    suppressAcknowledgementLetter: false
+    suppressAcknowledgementLetter: true
   };
 };
 
@@ -25,6 +26,8 @@ export const establishClaimFormReducer =
     switch (action.type) {
     case Constants.CHANGE_ESTABLISH_CLAIM_FIELD:
       return ReducerUtil.changeFieldValue(state, action);
+    case Constants.INCREMENT_MODIFIER_ON_DUPLICATE_EP_ERROR:
+      return update(state, { endProductModifier: { $set: action.payload.value } });
     default:
       return state;
     }

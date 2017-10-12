@@ -1,93 +1,32 @@
-import { Provider } from 'react-redux';
-import { createStore, applyMiddleware } from 'redux';
 import React from 'react';
+import { Provider } from 'react-redux';
+import { createStore, applyMiddleware, compose, combineReducers } from 'redux';
+import perfLogger from 'redux-perf-middleware';
+import thunk from 'redux-thunk';
 import DecisionReviewer from './DecisionReviewer';
-import logger from 'redux-logger';
-import * as Constants from './constants';
-import _ from 'lodash';
-import { categoryFieldNameOfCategoryName } from './utils';
+import readerReducer from './reducer';
+import { reduxAnalyticsMiddleware } from './analytics';
 
-const initialState = {
-  ui: {
-    pdf: {
-    }
-  },
-  documents: {
-  }
-};
+// eslint-disable-next-line no-underscore-dangle
+const composeEnhancers = window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
+const store = createStore(
+  combineReducers({
+    readerReducer
+  }),
+  composeEnhancers(applyMiddleware(thunk, perfLogger, reduxAnalyticsMiddleware))
+);
 
-export const readerReducer = (state = initialState, action = {}) => {
-  let categoryKey;
-
-  switch (action.type) {
-  case Constants.RECEIVE_DOCUMENTS:
-    return _.merge(
-      {},
-      state,
-      {
-        documents: _(action.payload).
-          map((doc) => [doc.id, doc]).
-          fromPairs().
-          value()
-      }
-    );
-  case Constants.TOGGLE_DOCUMENT_CATEGORY:
-    categoryKey = categoryFieldNameOfCategoryName(action.payload.categoryName);
-
-    return _.merge(
-      {},
-      state,
-      {
-        documents: {
-          [action.payload.docId]: {
-            [categoryKey]: action.payload.toggleState
-          }
-        }
-      }
-    );
-  case Constants.SET_CURRENT_RENDERED_FILE:
-    return _.merge(
-      {},
-      state,
-      {
-        ui: {
-          pdf: _.pick(action.payload, 'currentRenderedFile')
-        }
-      }
-    );
-  case Constants.SCROLL_TO_COMMENT:
-    return _.merge(
-      {},
-      state,
-      {
-        ui: {
-          pdf: _.pick(action.payload, 'scrollToComment')
-        }
-      }
-    );
-  case Constants.TOGGLE_COMMENT_LIST:
-    return _.merge(
-      {},
-      state,
-      {
-        documents: {
-          [action.payload.docId]: {
-            listComments: !state.documents[action.payload.docId].listComments
-          }
-        }
-      }
-    );
-  default:
-    return state;
-  }
-};
-
-const store = createStore(readerReducer, initialState, applyMiddleware(logger));
+if (module.hot) {
+  // Enable Webpack hot module replacement for reducers
+  module.hot.accept('./reducer', () => {
+    store.replaceReducer(readerReducer);
+  });
+}
 
 const Reader = (props) => {
   return <Provider store={store}>
-        <DecisionReviewer {...props} />
-    </Provider>;
+      <DecisionReviewer {...props} />
+  </Provider>;
 };
 
 export default Reader;

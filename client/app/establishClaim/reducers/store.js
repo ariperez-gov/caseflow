@@ -1,12 +1,17 @@
-import { applyMiddleware, createStore, combineReducers } from 'redux';
+import { applyMiddleware, createStore, combineReducers, compose } from 'redux';
 import logger from 'redux-logger';
+import thunk from 'redux-thunk';
 import specialIssuesReducer, { getSpecialIssuesInitialState } from './specialIssues';
+import establishClaimReducer, { getEstablishClaimInitialState } from './index';
 import establishClaimFormReducer,
   { getEstablishClaimFormInitialState } from './establishClaimForm';
 import ConfigUtil from '../../util/ConfigUtil';
 
+// eslint-disable-next-line no-underscore-dangle
+const composeEnhancers = window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ || compose;
+
 export const createEstablishClaimStore = (props) => {
-  let middleware = [];
+  let middleware = [thunk];
 
 
   // Avoid all the log spam when running the tests
@@ -17,12 +22,15 @@ export const createEstablishClaimStore = (props) => {
   return createStore(
     combineReducers({
       specialIssues: specialIssuesReducer,
-      establishClaimForm: establishClaimFormReducer
+      establishClaimForm: establishClaimFormReducer,
+      // Reducer with general/common state
+      establishClaim: establishClaimReducer
     }),
     {
       specialIssues: getSpecialIssuesInitialState(props),
-      establishClaimForm: getEstablishClaimFormInitialState(props)
+      establishClaimForm: getEstablishClaimFormInitialState(props),
+      establishClaim: getEstablishClaimInitialState()
     },
-    applyMiddleware(...middleware)
+    composeEnhancers(applyMiddleware(...middleware))
   );
 };

@@ -7,7 +7,28 @@
 class Certification < ActiveRecord::Base
   has_one :certification_cancellation, dependent: :destroy
 
+  def async_start!
+    return certification_status unless can_be_updated?
+
+    update_attributes!(
+      v2: true,
+      loading_data: true,
+      loading_data_failed: false
+    )
+
+    # We don't run sidekiq in development mode.
+    if Rails.env.development? || Rails.env.test?
+      StartCertificationJob.perform_now(self)
+    else
+      StartCertificationJob.perform_later(self, RequestStore[:current_user], RequestStore[:current_user].ip_address)
+    end
+  end
+
   def start!
+    return certification_status unless can_be_updated?
+
+    user = RequestStore[:current_user]
+
     create_or_update_form8
 
     update_attributes!(
@@ -20,10 +41,40 @@ class Certification < ActiveRecord::Base
       ssocs_matching_at:   calculcate_ssocs_matching_at,
       form8_started_at:    (certification_status == :started) ? now : nil,
       vacols_hearing_preference: appeal.hearing_request_type,
-      vacols_representative_name: appeal.representative
+      certifying_office: appeal.regional_office_name,
+      certifying_username: appeal.regional_office_key,
+      certifying_official_name: user ? user.full_name : nil,
+      certification_date: Time.zone.now.to_date
     )
 
     certification_status
+  end
+
+  def fetch_power_of_attorney!
+    poa = appeal.power_of_attorney
+    update = {
+      bgs_representative_type: poa.bgs_representative_type,
+      bgs_representative_name: poa.bgs_representative_name,
+      vacols_representative_type: poa.vacols_representative_type,
+      vacols_representative_name: poa.vacols_representative_name
+    }
+
+    address = poa.bgs_representative_address
+    if address
+      update = update.merge(bgs_rep_address_line_1: address[:address_line_1],
+                            bgs_rep_address_line_2: address[:address_line_2],
+                            bgs_rep_address_line_3: address[:address_line_3],
+                            bgs_rep_city: address[:city],
+                            bgs_rep_country: address[:country],
+                            bgs_rep_state: address[:state],
+                            bgs_rep_zip: address[:zip])
+    end
+
+    update_attributes!(update)
+  end
+
+  def bgs_rep_address_found?
+    !!appeal.power_of_attorney.bgs_representative_address
   end
 
   def create_or_update_form8
@@ -41,24 +92,55 @@ class Certification < ActiveRecord::Base
 
   def to_hash
     serializable_hash(
-      methods: :certification_status,
+      methods: [:certification_status, :bgs_rep_address_found?],
       include: [
         :form8,
-        appeal: { methods:
-       [:nod_match?,
-        :serialized_nod_date,
-        :soc_match?,
-        :serialized_soc_date,
-        :form9_match?,
-        :serialized_form9_date,
-        :ssoc_dates_with_matches,
-        :documents_match?,
-        :veteran_name,
-        :vbms_id] }]
+        appeal: {
+          include: [:nod, :soc, :form9, :ssocs],
+          methods: [:documents_match?, :veteran_name, :vbms_id]
+        }
+      ]
+    )
+  end
+
+  def rep_name
+    if poa_correct_in_vacols || poa_matches
+      vacols_representative_name
+    elsif poa_correct_in_bgs
+      bgs_representative_name
+    else
+      representative_name
+    end
+  end
+
+  def rep_type
+    if poa_correct_in_vacols || poa_matches
+      vacols_representative_type
+    elsif poa_correct_in_bgs
+      bgs_representative_type
+    else
+      representative_type
+    end
+  end
+
+  def update_vacols_poa!
+    appeal.power_of_attorney.update_vacols_rep_info!(
+      appeal: appeal,
+      representative_type: rep_type,
+      representative_name: rep_name,
+      address: {
+        address_line_1: bgs_rep_address_line_1,
+        address_line_2: bgs_rep_address_line_2,
+        address_line_3: bgs_rep_address_line_3,
+        city: bgs_rep_city,
+        state: bgs_rep_state,
+        zip: bgs_rep_zip
+      }
     )
   end
 
   def complete!(user_id)
+    update_vacols_poa! unless poa_matches || poa_correct_in_vacols
     appeal.certify!
     update_attributes!(completed_at: Time.zone.now, user_id: user_id)
   end
@@ -79,6 +161,15 @@ class Certification < ActiveRecord::Base
 
   def self.completed
     where("completed_at IS NOT NULL")
+  end
+
+  # in order to include certifications created before v2 field was introduced, we have additional 'or' conditions
+  # (i.e. bgs_representative_type not nil)
+  def self.v2
+    where(v2: true).or(where.not(bgs_representative_type: nil))
+                   .or(where.not(bgs_representative_name: nil))
+                   .or(where.not(vacols_representative_type: nil))
+                   .or(where.not(vacols_representative_name: nil))
   end
 
   def self.was_missing_doc
@@ -128,7 +219,7 @@ class Certification < ActiveRecord::Base
   end
 
   def calculate_form9_matching_at
-    appeal.form9_match? ? (form9_matching_at || now) : nil
+    appeal.form9.try(:matching?) ? (form9_matching_at || now) : nil
   end
 
   def calculate_already_certified
@@ -140,27 +231,35 @@ class Certification < ActiveRecord::Base
   end
 
   def calculate_nod_matching_at
-    appeal.nod_match? ? (nod_matching_at || now) : nil
+    appeal.nod.try(:matching?) ? (nod_matching_at || now) : nil
   end
 
   def calculate_soc_matching_at
-    appeal.soc_match? ? (soc_matching_at || now) : nil
+    appeal.soc.try(:matching?) ? (soc_matching_at || now) : nil
   end
 
   def calculcate_ssocs_matching_at
-    (calculate_ssocs_required && appeal.ssoc_all_match?) ? (ssocs_matching_at || now) : nil
+    (calculate_ssocs_required && appeal.ssocs.all?(&:matching?)) ? (ssocs_matching_at || now) : nil
   end
 
   def calculate_ssocs_required
-    !appeal.ssoc_dates.empty?
+    appeal.ssocs.any?
+  end
+
+  def can_be_updated?
+    Rails.env.development? || Rails.env.demo? || !already_certified
   end
 
   class << self
-    # Return existing certification only if it was not cancelled before
     def find_or_create_by_vacols_id(vacols_id)
+      find_by_vacols_id(vacols_id) || create!(vacols_id: vacols_id)
+    end
+
+    # Return existing certification only if it was not cancelled before
+    def find_by_vacols_id(vacols_id)
       Certification.join_cancellations
                    .where(certification_cancellations: { certification_id: nil })
-                   .find_by(vacols_id: vacols_id) || create!(vacols_id: vacols_id)
+                   .find_by(vacols_id: vacols_id)
     end
 
     def join_cancellations

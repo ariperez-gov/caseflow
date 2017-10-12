@@ -1,20 +1,21 @@
 /* eslint-disable max-lines */
 
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
+
 import ApiUtil from '../../util/ApiUtil';
-import ROUTING_INFORMATION from '../../constants/Routing';
+import WindowUtil from '../../util/WindowUtil';
 import specialIssueFilters from '../../constants/SpecialIssueFilters';
-import { FULL_GRANT } from '../../establishClaim/constants';
-import BaseForm from '../BaseForm';
+import { FULL_GRANT, INCREMENT_MODIFIER_ON_DUPLICATE_EP_ERROR } from '../../establishClaim/constants';
 
 import { createEstablishClaimStore } from '../../establishClaim/reducers/store';
-import { validModifiers } from '../../establishClaim/util';
+import {
+  validModifiers,
+  getSpecialIssuesEmail,
+  getSpecialIssuesRegionalOffice
+} from '../../establishClaim/util';
 import { getStationOfJurisdiction } from '../../establishClaim/selectors';
 
-import Modal from '../../components/Modal';
-import TextareaField from '../../components/TextareaField';
-import FormField from '../../util/FormField';
-import requiredValidator from '../../util/validators/RequiredValidator';
 import { formatDate } from '../../util/DateUtil';
 import EstablishClaimDecision from './EstablishClaimDecision';
 import EstablishClaimForm from './EstablishClaimForm';
@@ -22,6 +23,7 @@ import EstablishClaimNote from './EstablishClaimNote';
 import EstablishClaimEmail from './EstablishClaimEmail';
 import EstablishClaimProgressBar from './EstablishClaimProgressBar';
 import AssociatePage from './EstablishClaimAssociateEP';
+import CancelModal from '../../establishClaim/components/CancelModal';
 
 import { createHashHistory } from 'history';
 import { Provider } from 'react-redux';
@@ -34,26 +36,26 @@ export const EMAIL_PAGE = 'email';
 
 
 export const END_PRODUCT_INFO = {
-  'ARC': {
-    'Full Grant': ['172BVAG', 'BVA Grant'],
-    'Partial Grant': ['170PGAMC', 'ARC-Partial Grant'],
-    'Remand': ['170RMDAMC', 'ARC-Remand']
+  ARC: {
+    'Full Grant': ['070BVAGRARC', 'ARC BVA Grant'],
+    'Partial Grant': ['070RMBVAGARC', 'ARC Remand with BVA Grant'],
+    Remand: ['070RMNDARC', 'ARC Remand (070)']
   },
-  'Routed': {
-    'Full Grant': ['172BVAG', 'BVA Grant'],
-    'Partial Grant': ['170RBVAG', 'Remand with BVA Grant'],
-    'Remand': ['170RMD', 'Remand']
+  Routed: {
+    'Full Grant': ['070BVAGR', 'BVA Grant (070)'],
+    'Partial Grant': ['070RMNDBVAG', 'Remand with BVA Grant (070)'],
+    Remand: ['070RMND', 'Remand (070)']
   }
 };
 
 const CREATE_EP_ERRORS = {
-  'duplicate_ep': {
-    header: 'At this time, we are unable to assign or create a new EP for this claim.',
-    body: 'An EP with that modifier was previously created for this claim. ' +
-          'Try a different modifier or select Cancel at the bottom of the ' +
-          'page to release this claim and proceed to process it outside of Caseflow.'
+  duplicate_ep: {
+    header: 'Unable to assign or create a new EP for this claim',
+    body: 'Please try to create this EP again. If you are still unable ' +
+          'to proceed, select Cancel at the bottom of the page to ' +
+          'release this claim, and process it outside of Caseflow.'
   },
-  'task_already_completed': {
+  task_already_completed: {
     header: 'This task was already completed.',
     body: <span>
             Please return
@@ -61,7 +63,7 @@ const CREATE_EP_ERRORS = {
             establish the next claim.
           </span>
   },
-  'missing_ssn': {
+  missing_ssn: {
     header: 'The EP for this claim must be created outside Caseflow.',
     body: <span>
             This veteran does not have a social security number, so their
@@ -71,7 +73,17 @@ const CREATE_EP_ERRORS = {
             proceed to process it outside of Caseflow.
           </span>
   },
-  'default': {
+  bgs_info_invalid: {
+    header: 'The EP for this claim must be created outside Caseflow.',
+    body: <span>
+            The veteran's profile in the corporate database is missing information
+            required by Caseflow.
+            <br/>
+            Select Cancel at the bottom of the page to release this claim and
+            proceed to process it outside of Caseflow.
+          </span>
+  },
+  default: {
     header: 'System Error',
     body: 'Something went wrong on our end. We were not able to create an End Product. ' +
           'Please try again later.'
@@ -85,34 +97,16 @@ const BACK_TO_DECISION_REVIEW_TEXT = '< Back to Review Decision';
 // has been made. By establishing an EP, we ensure the appeal
 // has properly been "handed off" to the right party for adjusting
 // the veteran's benefits
-export default class EstablishClaim extends BaseForm {
+export default class EstablishClaim extends React.Component {
   constructor(props) {
     super(props);
     this.store = createEstablishClaimStore(props);
-    let decisionType = this.props.task.appeal.decision_type;
-    // Set initial state on page render
-
-    // The reviewForm decisionType is needed in the state first since
-    // it is used to calculate the validModifiers
-    this.state = {
-      reviewForm: {
-        decisionType: new FormField(decisionType)
-      }
-    };
+    this.history = createHashHistory();
 
     this.state = {
       ...this.state,
-      cancelModal: {
-        cancelFeedback: new FormField(
-          '',
-          requiredValidator('Please enter an explanation')
-        )
-      },
-      cancelModalDisplay: false,
-      history: createHashHistory(),
       loading: false,
       endProductCreated: false,
-      modalSubmitLoading: false,
       page: DECISION_PAGE,
       showNotePageAlert: false,
       specialIssues: {},
@@ -148,9 +142,8 @@ export default class EstablishClaim extends BaseForm {
   }
 
   componentDidMount() {
-    let { history } = this.state;
 
-    history.listen((location) => {
+    this.history.listen((location) => {
       // If we are on the note page and you try to move to
       // a previous page in the flow then we bump you back
       // to the note page.
@@ -170,11 +163,7 @@ export default class EstablishClaim extends BaseForm {
       }
     });
 
-    history.replace(this.defaultPage());
-  }
-
-  reloadPage = () => {
-    window.location.href = window.location.pathname + window.location.search;
+    this.history.replace(this.defaultPage());
   }
 
   shouldReviewAfterEndProductCreate = () => {
@@ -212,6 +201,17 @@ export default class EstablishClaim extends BaseForm {
         let errorMessage = CREATE_EP_ERRORS[error.response.body.error_code] ||
                           CREATE_EP_ERRORS.default;
 
+        let nextModifier = this.validModifiers()[1];
+
+        if (error.response.body.error_code === 'duplicate_ep' && nextModifier) {
+          this.store.dispatch({
+            type: INCREMENT_MODIFIER_ON_DUPLICATE_EP_ERROR,
+            payload: {
+              value: nextModifier
+            }
+          });
+        }
+
         this.setState({
           loading: false
         });
@@ -225,14 +225,16 @@ export default class EstablishClaim extends BaseForm {
   }
 
   getRoutingType = () => {
-    let stationOfJurisdiction =
-      this.store.getState().establishClaimForm.stationOfJurisdiction;
+    let stationOfJurisdiction = getStationOfJurisdiction(
+      this.store.getState().specialIssues,
+      this.props.task.appeal.station_key
+    );
 
     return stationOfJurisdiction === '397' ? 'ARC' : 'Routed';
   }
 
   getClaimTypeFromDecision = () => {
-    let decisionType = this.state.reviewForm.decisionType.value;
+    let decisionType = this.props.task.appeal.decision_type;
     let values = END_PRODUCT_INFO[this.getRoutingType()][decisionType];
 
     if (!values) {
@@ -242,54 +244,8 @@ export default class EstablishClaim extends BaseForm {
     return values;
   }
 
-  handleFinishCancelTask = () => {
-    let { id } = this.props.task;
-    let data = {
-      feedback: this.state.cancelModal.cancelFeedback.value
-    };
-
-    this.props.handleAlertClear();
-
-    if (!this.validateFormAndSetErrors(this.state.cancelModal)) {
-      return;
-    }
-
-    this.setState({
-      modalSubmitLoading: true
-    });
-
-    data = ApiUtil.convertToSnakeCase(data);
-
-    return ApiUtil.patch(`/dispatch/establish-claim/${id}/cancel`, { data }).then(() => {
-      this.reloadPage();
-    }, () => {
-      this.props.handleAlert(
-        'error',
-        'Error',
-        'There was an error while cancelling the current claim. Please try again later'
-      );
-      this.setState({
-        cancelModalDisplay: false,
-        modalSubmitLoading: false
-      });
-    });
-  }
-
-  handleModalClose = (modal) => () => {
-    let stateObject = {};
-
-    stateObject[modal] = false;
-    this.setState(stateObject);
-  };
-
-  handleCancelTask = () => {
-    this.setState({
-      cancelModalDisplay: true
-    });
-  }
-
   handlePageChange = (page) => {
-    this.state.history.push(page);
+    this.history.push(page);
     // Scroll to the top of the page on a page change
     window.scrollTo(0, 0);
   }
@@ -348,7 +304,7 @@ export default class EstablishClaim extends BaseForm {
         });
 
         if (!this.willCreateEndProduct()) {
-          if (this.state.reviewForm.decisionType.value === FULL_GRANT) {
+          if (this.props.task.appeal.decision_type === FULL_GRANT) {
             this.setUnhandledSpecialIssuesEmailAndRegionalOffice();
             this.handlePageChange(EMAIL_PAGE);
           } else {
@@ -385,13 +341,16 @@ export default class EstablishClaim extends BaseForm {
       loading: true
     });
 
+    // We want to trim the vacols note to 280 char. As that is
+    // a DB column constraint
+
     let data = ApiUtil.convertToSnakeCase({
-      vacolsNote
+      vacolsNote: (vacolsNote && vacolsNote.substring(0, 280))
     });
 
     return ApiUtil.post(`/dispatch/establish-claim/${task.id}/review-complete`, { data }).
       then(() => {
-        this.reloadPage();
+        WindowUtil.reloadPage();
       }, () => {
         handleAlert(
         'error',
@@ -404,59 +363,6 @@ export default class EstablishClaim extends BaseForm {
       });
   }
 
-  handleEmailPageSubmit = () => {
-    let { handleAlert, handleAlertClear, task } = this.props;
-
-    handleAlertClear();
-
-    this.setState({
-      loading: true
-    });
-
-    let data = ApiUtil.convertToSnakeCase({
-      emailRoId: this.getSpecialIssuesRegionalOfficeCode(),
-      emailRecipient: this.getSpecialIssuesEmail().join(', ')
-    });
-
-    return ApiUtil.post(`/dispatch/establish-claim/${task.id}/email-complete`, { data }).
-      then(() => {
-        this.reloadPage();
-      }, () => {
-        handleAlert(
-        'error',
-        'Error',
-        'There was an error while completing the task. Please try again later'
-        );
-        this.setState({
-          loading: false
-        });
-      });
-  };
-
-  handleNoEmailPageSubmit = () => {
-    let { handleAlert, handleAlertClear, task } = this.props;
-
-    handleAlertClear();
-
-    this.setState({
-      loading: true
-    });
-
-    return ApiUtil.post(`/dispatch/establish-claim/${task.id}/no-email-complete`).
-    then(() => {
-      this.reloadPage();
-    }, () => {
-      handleAlert(
-        'error',
-        'Error',
-        'There was an error while completing the task. Please try again later'
-      );
-
-      this.setState({
-        loading: false
-      });
-    });
-  };
 
   handleAssociatePageSubmit = () => {
     this.handlePageChange(FORM_PAGE);
@@ -464,60 +370,6 @@ export default class EstablishClaim extends BaseForm {
 
   handleBackToDecisionReview = () => {
     this.handlePageChange(DECISION_PAGE);
-  }
-
-  getSpecialIssuesEmail() {
-    if (this.state.specialIssuesEmail === 'PMC') {
-      return this.getEmailFromConstant(ROUTING_INFORMATION.PMC);
-    } else if (this.state.specialIssuesEmail === 'COWC') {
-      return this.getEmailFromConstant(ROUTING_INFORMATION.COWC);
-    } else if (this.state.specialIssuesEmail === 'education') {
-      return this.getEmailFromConstant(ROUTING_INFORMATION.EDUCATION);
-    }
-
-    return this.state.specialIssuesEmail;
-  }
-
-  getEmailFromConstant(constant) {
-    let regionalOfficeKey = this.props.task.appeal.regional_office_key;
-
-    return ROUTING_INFORMATION.codeToEmailMapper[constant[regionalOfficeKey]];
-  }
-
-  getCityAndState(regionalOfficeKey) {
-    if (!regionalOfficeKey) {
-      return null;
-    }
-
-    return `${regionalOfficeKey} - ${
-      this.props.regionalOfficeCities[regionalOfficeKey].city}, ${
-      this.props.regionalOfficeCities[regionalOfficeKey].state}`;
-  }
-
-  getSpecialIssuesRegionalOffice() {
-    return this.getCityAndState(
-      this.getSpecialIssuesRegionalOfficeCode(this.state.specialIssuesRegionalOffice)
-    );
-  }
-
-  getSpecialIssuesRegionalOfficeCode() {
-    if (this.state.specialIssuesRegionalOffice === 'PMC') {
-      return this.getRegionalOfficeFromConstant(ROUTING_INFORMATION.PMC);
-    } else if (this.state.specialIssuesRegionalOffice === 'COWC') {
-      return this.getRegionalOfficeFromConstant(ROUTING_INFORMATION.COWC);
-    } else if (this.state.specialIssuesRegionalOffice === 'education') {
-      return this.getRegionalOfficeFromConstant(ROUTING_INFORMATION.EDUCATION);
-    } else if (!this.state.specialIssuesRegionalOffice) {
-      return null;
-    }
-
-    return this.state.specialIssuesRegionalOffice;
-  }
-
-  getRegionalOfficeFromConstant(constant) {
-    let regionalOfficeKey = this.props.task.appeal.regional_office_key;
-
-    return constant[regionalOfficeKey];
   }
 
   formattedDecisionDate = () => {
@@ -601,15 +453,10 @@ export default class EstablishClaim extends BaseForm {
 
   render() {
     let {
-      cancelModalDisplay,
-      history,
-      modalSubmitLoading
-    } = this.state;
-
-    let {
       pdfLink,
       pdfjsLink
     } = this.props;
+    let decisionType = this.props.task.appeal.decision_type;
 
     let specialIssues = this.store.getState().specialIssues;
 
@@ -623,8 +470,7 @@ export default class EstablishClaim extends BaseForm {
         { this.isDecisionPage() &&
           <EstablishClaimDecision
             loading={this.state.loading}
-            decisionType={this.state.reviewForm.decisionType}
-            handleCancelTask={this.handleCancelTask}
+            decisionType={decisionType}
             handleFieldChange={this.handleFieldChange}
             handleSubmit={this.handleDecisionPageSubmit}
             pdfLink={pdfLink}
@@ -636,16 +482,15 @@ export default class EstablishClaim extends BaseForm {
           <AssociatePage
             loading={this.state.loading}
             endProducts={this.props.task.appeal.non_canceled_end_products_within_30_days}
+            history={this.history}
             task={this.props.task}
-            decisionType={this.state.reviewForm.decisionType.value}
+            decisionType={decisionType}
             handleAlert={this.props.handleAlert}
             handleAlertClear={this.props.handleAlertClear}
-            handleCancelTask={this.handleCancelTask}
             handleSubmit={this.handleAssociatePageSubmit}
             hasAvailableModifers={this.hasAvailableModifers()}
             handleBackToDecisionReview={this.handleBackToDecisionReview}
             backToDecisionReviewText={BACK_TO_DECISION_REVIEW_TEXT}
-            history={history}
           />
         }
         { this.isFormPage() &&
@@ -653,7 +498,6 @@ export default class EstablishClaim extends BaseForm {
             loading={this.state.loading}
             claimLabelValue={this.getClaimTypeFromDecision().join(' - ')}
             decisionDate={this.formattedDecisionDate()}
-            handleCancelTask={this.handleCancelTask}
             handleSubmit={this.handleFormPageSubmit}
             handleFieldChange={this.handleFieldChange}
             handleBackToDecisionReview={this.handleBackToDecisionReview}
@@ -661,7 +505,6 @@ export default class EstablishClaim extends BaseForm {
             regionalOfficeKey={this.props.task.appeal.regional_office_key}
             regionalOfficeCities={this.props.regionalOfficeCities}
             stationKey={this.props.task.appeal.station_key}
-            validModifiers={this.validModifiers()}
           />
         }
         { this.isNotePage() &&
@@ -669,62 +512,46 @@ export default class EstablishClaim extends BaseForm {
             loading={this.state.loading}
             endProductCreated={this.state.endProductCreated}
             appeal={this.props.task.appeal}
-            decisionType={this.state.reviewForm.decisionType.value}
+            decisionType={decisionType}
             handleSubmit={this.handleNotePageSubmit}
             handleBackToDecisionReview={this.handleBackToDecisionReview}
             backToDecisionReviewText={BACK_TO_DECISION_REVIEW_TEXT}
             showNotePageAlert={this.state.showNotePageAlert}
             specialIssues={specialIssues}
-            displayVacolsNote={this.state.reviewForm.decisionType.value !== FULL_GRANT}
+            displayVacolsNote={decisionType !== FULL_GRANT}
             displayVbmsNote={this.containsRoutedOrRegionalOfficeSpecialIssues()}
           />
         }
         { this.isEmailPage() &&
           <EstablishClaimEmail
-            loading={this.state.loading}
             appeal={this.props.task.appeal}
-            handleCancelTask={this.handleCancelTask}
-            handleEmailSubmit={this.handleEmailPageSubmit}
-            handleNoEmailSubmit={this.handleNoEmailPageSubmit}
-            regionalOffice={this.getSpecialIssuesRegionalOffice()}
-            regionalOfficeEmail={this.getSpecialIssuesEmail()}
-            specialIssues={specialIssues}
+            handleAlertClear={this.props.handleAlertClear}
+            handleAlert={this.props.handleAlert}
+            regionalOfficeEmail={
+              getSpecialIssuesEmail(
+                this.state.specialIssuesEmail,
+                this.props.task.appeal.regional_office_key
+              )
+            }
+            regionalOffice={
+              getSpecialIssuesRegionalOffice(
+                this.state.specialIssuesRegionalOffice,
+                this.props.task.appeal.regional_office_key,
+                this.props.regionalOfficeCities
+              )
+            }
             handleBackToDecisionReview={this.handleBackToDecisionReview}
             backToDecisionReviewText={BACK_TO_DECISION_REVIEW_TEXT}
+            specialIssues={specialIssues}
+            specialIssuesRegionalOffice={this.state.specialIssuesRegionalOffice}
+            taskId={this.props.task.id}
           />
         }
-
-        {cancelModalDisplay && <Modal
-          buttons={[
-            { classNames: ['cf-modal-link', 'cf-btn-link'],
-              name: 'Close',
-              onClick: this.handleModalClose('cancelModalDisplay')
-            },
-            { classNames: ['usa-button', 'usa-button-secondary'],
-              loading: modalSubmitLoading,
-              name: 'Stop processing claim',
-              onClick: this.handleFinishCancelTask
-            }
-          ]}
-          visible={true}
-          closeHandler={this.handleModalClose('cancelModalDisplay')}
-          title="Stop Processing Claim">
-          <p>
-            If you click the <b>Stop processing claim </b>
-            button below your work will not be
-            saved and an EP will not be created for this claim.
-          </p>
-          <p>
-            Please tell us why you have chosen to discontinue processing this claim.
-          </p>
-          <TextareaField
-            label="Explanation"
-            name="Explanation"
-            onChange={this.handleFieldChange('cancelModal', 'cancelFeedback')}
-            required={true}
-            {...this.state.cancelModal.cancelFeedback}
-          />
-        </Modal>}
+        <CancelModal
+          handleAlertClear={this.props.handleAlertClear}
+          handleAlert={this.props.handleAlert}
+          taskId={this.props.task.id}
+        />
         </div>
       </Provider>
     );

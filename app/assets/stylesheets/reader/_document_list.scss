@@ -5,13 +5,72 @@ $gray-font-color: #6b7079;
 $tag-backgrond-color: #d6d7d9;
 
 .section--document-list {
+  .loading-text {
+    font-style: italic;
+  }
+
+  mark {
+    background: $color-gold-lightest;
+  }
+
+  .section--no-search-results {
+    .cf-msg-screen-text {
+      display: none;
+    }
+
+    .cf-app-segment--alt {
+      border: none;
+      margin-top: 0;
+      padding: 4rem 4rem 2rem;
+
+      .cf-msg-screen-deck {
+        word-break: break-word;
+        margin-bottom: 0 !important;
+      }
+    }
+  }
+
   .table-icon {
     margin: 1px;
+    margin-left: 5px;
     cursor: pointer;
   }
 
   i {
     margin: 0;
+  }
+
+  .documents-table {
+    min-width: 810px;
+  }
+
+  $last-read-column-width: 41px;
+
+  .last-read-column {
+    // This value is determined by the size of the SVG.
+    min-width: $last-read-column-width;
+  }
+
+  .categories-column {
+    min-width: 140px;
+  }
+
+  .receipt-date-column {
+    min-width: 150px;
+  }
+
+  .doc-type-column {
+    width: 28vw;
+    min-width: 185px;
+  }
+
+  .tags-column {
+    width: 28vw;
+  }
+
+  .comments-column {
+    width: 112px;
+    min-width: 112px;
   }
 
   .bordered-icon {
@@ -21,12 +80,50 @@ $tag-backgrond-color: #d6d7d9;
     font-size: 15px;
   }
 
-  .document-list-receipt-date {
-    color: $gray-font-color;
+  .cf-document-list-header-row tr {
+    display: block;
+
+    th > div {
+      display: flex;
+    }
   }
 
-  .document-list-comments-indicator {
-    padding-left: 35px;
+  .cf-document-list-button-header {
+    display: flex;
+    align-items: center;
+    background-color: $color-white;
+    color: $color-gray-dark;
+    padding: 0;
+    margin: 0;
+    line-height: normal;
+  }
+
+  .cf-document-list-body {
+    display: block;
+    max-height: 65vh;
+    overflow: auto;
+
+    .horizontal-comment {
+      display: flex;
+      margin-left: $last-read-column-width;
+
+      .comment-page-number {
+        width: 10rem;
+
+        h4 {
+          line-height: 50px;
+        }
+      }
+
+      .comment-jump-to-section {
+        width: 20rem;
+        line-height: 50px;
+      }
+    }
+  }
+
+  .document-list-receipt-date {
+    color: $gray-font-color;
   }
 
   .document-list-comments-indicator-icon {
@@ -34,21 +131,183 @@ $tag-backgrond-color: #d6d7d9;
     margin: 3px;
   }
 
-  .document-list-issue-tag {
-    display: inline-block;
-    background: $tag-backgrond-color;
-    border-radius: 3px;
-    padding: 2px 5px;
-    text-align: center;
-    margin: 3px;
+  .document-list-issue-tags {
+    max-width: 225px;
+
+    .document-list-issue-tag {
+      display: inline-block;
+      background: $tag-backgrond-color;
+      border-radius: 3px;
+      padding: 4px 7px;
+      text-align: center;
+      margin: 3px;
+      max-width: 225px;
+      word-wrap: break-word;
+    }
   }
 
+  .cf-dropdown-filter {
+    z-index: 15;
+    position: absolute;
+    border: 1px solid $color-gray-lighter;
+    background: $color-white;
+    box-shadow: 5px 5px 4px -3px $color-gray-lighter;
+    font-weight: normal;
+    padding: 0;
+    $dropdown-interior-padding: 14px;
+
+    @mixin hover {
+      &:hover {
+        background-color: $color-gray;
+        color: $color-white;
+      }
+    }
+
+    .cf-clear-filter-row {
+      border-bottom: 1px solid $color-gray-lighter;
+      padding: 14px;
+      @include hover;
+
+      button {
+        padding: 0 0 0 2px;
+      }
+
+      &:hover .cf-clear-filter-button-wrapper {
+        border-bottom-color: $color-gray;
+      }
+    }
+
+    .cf-document-tag-picker {
+      padding-bottom: 0;
+      margin: 0;
+      max-height: 345px;
+      word-break: break-word;
+      max-width: 218px;
+      overflow-y: auto;
+
+      li {
+        margin-bottom: 0;
+        padding: 14px;
+        @include hover;
+
+        .cf-form-checkboxes {
+          margin-bottom: 0;
+          margin-top: 0;
+
+          label {
+            margin-bottom: 0;
+          }
+        }
+      }
+   }
+
+    .cf-document-category-picker {
+      margin-bottom: 0;
+      margin-top: 0;
+      padding-bottom: 0;
+
+      li {
+        margin-bottom: 0;
+        padding: 14px;
+        @include hover;
+
+        .cf-form-checkboxes {
+          margin-top: 0;
+          margin-bottom: 0;
+
+          label {
+            margin-bottom: 0;
+            }
+
+          .cf-category-selector {
+            margin-bottom: 0;
+          }
+        }
+      }
+
+      li:last-child .cf-form-checkboxes {
+        margin-bottom: 0;
+
+        .cf-category-selector {
+          margin-bottom: 0;
+        }
+      }
+    }
+  }
+
+  .unselected-filter-icon {
+    .unselected-filter-icon-inner {
+      fill: $color-gray-dark;
+    }
+
+    .unselected-filter-icon-border {
+      stroke: $color-gray-dark;
+    }
+  }
+
+  .unselected-filter-icon:hover {
+    .unselected-filter-icon-inner {
+      fill: $color-primary;
+    }
+
+    .unselected-filter-icon-border {
+      stroke: $color-primary;
+    }
+  }
+
+  .cf-text-button {
+    background: inherit;
+    font-weight: inherit;
+    margin: 0;
+    color: inherit;
+
+    &:hover {
+      color: inherit;
+      background: inherit;
+    }
+  }
+
+  .cf-document-filter-picker {
+    list-style-type: none;
+    padding-left: 0;
+    padding-bottom: 0;
+
+    .cf-category-selector {
+      display: flex;
+      align-items: flex-start;
+
+      .cf-category-name {
+        line-height: 1;
+        padding-left: 7px;
+      }
+    }
+  }
+}
+
+
+.document-list-filter-message {
+  margin-top: 10px;
 }
 
 .document-list-header {
-  .num-of-documents {
-    color: $gray-font-color;
-    padding: 5px;
+  display: flex;
+  justify-content: space-between;
+
+  .search-bar-and-doc-count {
+    flex-grow: 2;
+
+    .usa-search {
+      flex-grow: 1;
+    }
+
+    .num-of-documents {
+      color: $gray-font-color;
+      padding: 5px;
+      flex-grow: 1;
+    }
   }
 }
 
+.document-list-header-issue-tags {
+  min-width: 150px;
+}

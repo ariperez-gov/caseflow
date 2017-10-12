@@ -20,7 +20,8 @@ describe EstablishClaim do
       aasm_state: aasm_state,
       completion_status: completion_status,
       claim_establishment: claim_establishment,
-      outgoing_reference_id: outgoing_reference_id
+      outgoing_reference_id: outgoing_reference_id,
+      user: assigned_user
     )
   end
 
@@ -41,6 +42,8 @@ describe EstablishClaim do
   let(:special_issues) { {} }
   let(:ep_code) { nil }
   let(:outgoing_reference_id) { nil }
+  let(:user) { Generators::User.create(full_name: "Robert Smith") }
+  let(:assigned_user) { nil }
 
   context "#should_invalidate?" do
     subject { establish_claim.should_invalidate? }
@@ -57,10 +60,15 @@ describe EstablishClaim do
     end
 
     context "appeal not found in VACOLS" do
-      before do
-        establish_claim
-        Fakes::AppealRepository.clean!
-      end
+      # We cannot use the appeal generator, since when we use it we necessarily
+      # need a record in our fake VACOLS
+      let(:appeal) { Appeal.new(vacols_id: "MISSING VACOLS ID") }
+
+      it { is_expected.to be_truthy }
+    end
+
+    context "appeal decision type is nil" do
+      let(:vacols_record) { { template: :full_grant_decided, issues: [] } }
 
       it { is_expected.to be_truthy }
     end
@@ -98,7 +106,7 @@ describe EstablishClaim do
 
       context "if the task's appeal errors out on decision content load" do
         before do
-          expect(Appeal.repository).to receive(:fetch_document_file).and_raise("VBMS 500")
+          expect(VBMSService).to receive(:fetch_document_file).and_raise("VBMS 500")
           establish_claim.save!
         end
 
@@ -110,7 +118,7 @@ describe EstablishClaim do
 
       context "if the task caches decision content successfully" do
         before do
-          expect(Appeal.repository).to receive(:fetch_document_file) { "yay content!" }
+          expect(VBMSService).to receive(:fetch_document_file) { "yay content!" }
         end
 
         it "prepares task and caches decision document content" do
@@ -126,7 +134,7 @@ describe EstablishClaim do
   context "#perform!" do
     # Stub the id of the end product being created
     before do
-      Fakes::AppealRepository.end_product_claim_id = "12345"
+      Fakes::VBMSService.end_product_claim_id = "12345"
     end
 
     let(:claim_params) do
@@ -168,7 +176,7 @@ describe EstablishClaim do
 
     context "when VBMS throws an error" do
       before do
-        allow(Appeal.repository).to receive(:establish_claim!).and_raise(vbms_error)
+        allow(VBMSService).to receive(:establish_claim!).and_raise(vbms_error)
 
         # Save objects to test DB rollback stuff
         establish_claim.save!
@@ -234,6 +242,7 @@ describe EstablishClaim do
   context "#complete_with_review!" do
     subject { establish_claim.complete_with_review!(vacols_note: vacols_note) }
 
+    let(:assigned_user) { user }
     let(:aasm_state) { :reviewed }
     let(:vacols_note) { "This is my note." }
     let(:vacols_update) { Fakes::AppealRepository.vacols_dispatch_update }
@@ -309,6 +318,7 @@ describe EstablishClaim do
 
     let(:params) { { email_recipient: "shane@va.gov", email_ro_id: "RO22" } }
     let(:aasm_state) { :started }
+    let(:assigned_user) { user }
 
     it "completes the task" do
       subject
@@ -352,6 +362,7 @@ describe EstablishClaim do
     subject { establish_claim.assign_existing_end_product!(end_product_id) }
     let(:end_product_id) { "123YAY" }
     let(:aasm_state) { :started }
+    let(:assigned_user) { user }
 
     it "completes the task and sets reference to end product" do
       subject
@@ -504,6 +515,20 @@ describe EstablishClaim do
       it "uses value from Task#completion_status_text" do
         is_expected.to eq("EP created for ARC - 397")
       end
+    end
+  end
+
+  context "#past_weeks" do
+    before do
+      establish_claim.update(completed_at: Time.zone.today - 2.weeks)
+    end
+
+    it "returns tasks completed in the specified range" do
+      expect(EstablishClaim.past_weeks(2).count).to eql(1)
+    end
+
+    it "returns no tasks outside the specified range" do
+      expect(EstablishClaim.past_weeks(1).count).to eql(0)
     end
   end
 end

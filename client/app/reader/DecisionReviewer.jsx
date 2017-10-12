@@ -1,374 +1,189 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
+import { bindActionCreators } from 'redux';
+import { connect } from 'react-redux';
+import { BrowserRouter } from 'react-router-dom';
+import { getQueryParams } from '../util/QueryParamsUtil';
+
+import PageRoute from '../components/PageRoute';
 import PdfViewer from './PdfViewer';
 import PdfListView from './PdfListView';
-import AnnotationStorage from '../util/AnnotationStorage';
-import ApiUtil from '../util/ApiUtil';
+import ReaderLoadingScreen from './ReaderLoadingScreen';
+import CaseSelect from './CaseSelect';
+import CaseSelectLoadingScreen from './CaseSelectLoadingScreen';
+import * as ReaderActions from './actions';
+import { CATEGORIES } from './analytics';
+import { documentCategories } from './constants';
 import _ from 'lodash';
-import { connect } from 'react-redux';
-import * as Constants from './constants';
+import NavigationBar from '../components/NavigationBar';
+import Footer from '../components/Footer';
 
-const PARALLEL_DOCUMENT_REQUESTS = 3;
+const fireSingleDocumentModeEvent = _.memoize(() => {
+  window.analyticsEvent(CATEGORIES.VIEW_DOCUMENT_PAGE, 'single-document-mode');
+});
 
-export class DecisionReviewer extends React.Component {
+export class DecisionReviewer extends React.PureComponent {
   constructor(props) {
     super(props);
 
-    let selectedLabels = {
-      decisions: false,
-      layperson: false,
-      privateMedical: false,
-      procedural: false,
-      vaMedial: false,
-      veteranSubmitted: false
-    };
-
     this.state = {
-      // We want to show the list view (currentPdfIndex null), unless
-      // there is just a single pdf in which case we want to just show
-      // the first pdf.
-      currentPdfIndex: this.props.appealDocuments.length > 1 ? null : 0,
-      filterBy: '',
-      isCommentLabelSelected: false,
-      selectedLabels,
-      sortBy: 'date',
-      sortDirection: 'ascending',
-      unsortedDocuments: this.props.appealDocuments.map((doc) => {
-        doc.receivedAt = doc.received_at;
-
-        return doc;
-      })
+      isCommentLabelSelected: false
     };
 
-    this.props.onReceiveDocs(this.props.appealDocuments);
-
-    this.annotationStorage = new AnnotationStorage(this.props.annotations);
-
-    this.state.documents = this.filterDocuments(
-      this.sortDocuments(this.state.unsortedDocuments));
+    this.routedPdfListView.displayName = 'RoutedPdfListView';
+    this.routedPdfViewer.displayName = 'RoutedPdfViewer';
+    this.routedCaseSelect.displayName = 'RoutedCaseSelect';
   }
 
-  componentWillReceiveProps(nextProps) {
-    if (this.props.appealDocuments !== nextProps.appealDocuments) {
-      this.props.onReceiveDocs(nextProps.appealDocuments);
-    }
-  }
-
-  onPreviousPdf = () => {
-    this.setPage(Math.max(this.state.currentPdfIndex - 1, 0));
-  }
-
-  documentUrl = (doc) => {
-    return `/document/${doc.id}/pdf`;
-  }
-
-  onNextPdf = () => {
-    this.setPage(Math.min(this.state.currentPdfIndex + 1,
-        this.state.documents.length - 1));
-  }
-
-  // This method is used for updating attributes of documents.
-  // Since we maintain a sorted and unsorted list of documents
-  // when we update one, we need to update the other.
-  setDocumentAttribute = (pdfNumber, field, value) => {
-    let unsortedDocs = [...this.state.unsortedDocuments];
-    let documentId = this.state.documents[pdfNumber].id;
-
-    // We need to update the attribute in both the unsorted
-    // and sorted list of documents. PdfNumber refers to the
-    // sorted list. For the unsorted list, we need to look
-    // it up by documentId.
-    unsortedDocs.forEach((doc) => {
-      if (doc.id === documentId) {
-        doc[field] = value;
-      }
-    });
-
-    let docs = [...this.state.documents];
-
-    docs[pdfNumber][field] = value;
-
-    this.setState({
-      documents: docs,
-      unsortedDocuments: unsortedDocs
-    });
-  }
-
-  pdfNumberFromId = (pdfId) => _.findIndex(this.state.documents, { id: pdfId })
-
-  showPdf = (pdfId) => (event) => {
-    let pdfNumber = this.pdfNumberFromId(pdfId);
-
-    // If the user is trying to open the link in a new tab/window
-    // then follow the link. Otherwise if they just clicked the link
-    // keep them contained within the SPA.
-    // ctrlKey for windows
-    // shift key for opening in new window
-    // metaKey for Macs
-    // button for middle click
-    if (event.ctrlKey ||
-        event.shiftKey ||
-        event.metaKey ||
-        (event.button &&
-        event.button === 1)) {
-
-      this.markAsRead(pdfNumber);
-
-      return true;
-    }
-
-    event.preventDefault();
-    this.setPage(pdfNumber);
-  }
-
-  markAsRead = (pdfNumber) => {
-
-    let documentId = this.state.documents[pdfNumber].id;
-
-    ApiUtil.patch(`/document/${documentId}/mark-as-read`).
-      then(() => {
-        this.setDocumentAttribute(pdfNumber, 'opened_by_current_user', true);
-      }, () => {
-
-        /* eslint-disable no-console */
-        console.log('Error marking as read');
-
-        /* eslint-enable no-console */
-      });
-  }
-
-  setPage = (pdfNumber) => {
-    this.markAsRead(pdfNumber);
-    this.setState({
-      currentPdfIndex: pdfNumber
-    });
-  }
-
-  onShowList = () => {
-    this.setState({
-      currentPdfIndex: null
-    }, this.sortAndFilter);
-  }
-
-  sortAndFilter = () => {
-    this.setState({
-      documents: this.filterDocuments(
-        this.sortDocuments(this.state.unsortedDocuments))
-    });
-  }
-
-  sortDocuments = (documents) => {
-    let documentCopy = [...documents];
-    let multiplier;
-
-    if (this.state.sortDirection === 'ascending') {
-      multiplier = 1;
-    } else if (this.state.sortDirection === 'descending') {
-      multiplier = -1;
-    } else {
+  showPdf = (history, vacolsId) => (docId) => () => {
+    if (!this.props.storeDocuments[docId]) {
       return;
     }
 
-    documentCopy.sort((doc1, doc2) => {
-      if (this.state.sortBy === 'date') {
-        return multiplier * (new Date(doc1.receivedAt) - new Date(doc2.receivedAt));
-      } else if (this.state.sortBy === 'type') {
-        return multiplier * (doc1.type < doc2.type ? -1 : 1);
-      }
+    history.push(`/${vacolsId}/documents/${docId}`);
+  }
 
-      return 0;
+  clearPlacingAnnotationState = () => {
+    if (this.props.pdf.isPlacingAnnotation) {
+      this.props.stopPlacingAnnotation('from-click-outside-doc');
+    }
+  }
 
-    });
-
-    return documentCopy;
+  componentWillUnmount() {
+    window.removeEventListener('click', this.clearPlacingAnnotationState);
   }
 
   componentDidMount = () => {
-    let downloadDocuments = (documentUrls, index) => {
-      if (index >= documentUrls.length) {
-        return;
-      }
-
-      ApiUtil.get(documentUrls[index], { cache: true }).
-        then(() => {
-          downloadDocuments(documentUrls, index + PARALLEL_DOCUMENT_REQUESTS);
-        });
-    };
-
-    for (let i = 0; i < PARALLEL_DOCUMENT_REQUESTS; i++) {
-      downloadDocuments(this.props.appealDocuments.map((doc) => {
-        return this.documentUrl(doc);
-      }), i);
+    window.addEventListener('click', this.clearPlacingAnnotationState);
+    if (this.props.singleDocumentMode) {
+      fireSingleDocumentModeEvent();
     }
   }
 
-  changeSortState = (sortBy) => () => {
-    let sortDirection = this.state.sortDirection;
-
-    // if you click the same label then we want to
-    // flip the sort type. Otherwise if you're clicking
-    // a new label, we want this to sort ascending.
-    if (this.state.sortBy === sortBy) {
-      if (sortDirection === 'ascending') {
-        sortDirection = 'descending';
-      } else {
-        sortDirection = 'ascending';
-      }
-    } else {
-      sortDirection = 'ascending';
-    }
-
-    this.setState({
-      sortBy,
-      sortDirection
-    }, this.sortAndFilter);
-  }
-
-  metadataContainsString = (doc, searchString) => {
-    if (doc.type.toLowerCase().includes(searchString)) {
-      return true;
-    } else if (doc.receivedAt.toLowerCase().includes(searchString)) {
-      return true;
-    }
-  }
-
-  // This filters documents to those that contain the search text
-  // in either the metadata (type, date) or in the comments
-  // on the document.
-  filterDocuments = (documents) => {
-    let filterBy = this.state.filterBy.toLowerCase();
-    let labelsSelected = Object.keys(this.state.selectedLabels).
-      reduce((anySelected, label) =>
-        anySelected || this.state.selectedLabels[label], false);
-
-    let filteredDocuments = documents.filter((doc) => {
-      // if there is a label selected, we filter on that.
-      if (labelsSelected && !this.state.selectedLabels[doc.label]) {
-        return false;
-      }
-
-      let annotations = this.annotationStorage.getAnnotationByDocumentId(doc.id);
-
-      if (this.state.isCommentLabelSelected && annotations.length === 0) {
-        return false;
-      }
-
-      if (this.metadataContainsString(doc, filterBy)) {
-        return true;
-      }
-
-      if (annotations.some((annotation) => annotation.comment.
-        toLowerCase().includes(filterBy))) {
-        return true;
-      }
-
-      return false;
-    });
-
-    return filteredDocuments;
-  }
-
-  onFilter = (filterBy) => {
-    this.setState({
-      filterBy
-    }, this.sortAndFilter);
-  }
-
-  onLabelSelected = (label) => () => {
-    let selectedLabels = { ...this.state.selectedLabels };
-
-    selectedLabels[label] = !selectedLabels[label];
-    this.setState({
-      selectedLabels
-    }, this.sortAndFilter);
-  }
-
-  selectComments = () => {
-    this.setState({
-      isCommentLabelSelected: !this.state.isCommentLabelSelected
-    }, this.sortAndFilter);
-  }
-
-  shouldShowNextButton = () => {
-    return this.state.currentPdfIndex + 1 < this.state.documents.length;
-  }
-
-  shouldShowPreviousButton = () => {
-    return this.state.currentPdfIndex > 0;
-  }
-
-  onJumpToComment = (comment) => () => {
-    this.setPage(this.pdfNumberFromId(comment.documentId));
+  onJumpToComment = (history, vacolsId) => (comment) => () => {
+    this.showPdf(history, vacolsId)(comment.documentId)();
     this.props.onScrollToComment(comment);
   }
 
-  onCommentScrolledTo = () => {
-    this.props.onScrollToComment(null);
-  }
+  determineInitialCategoryFilter = (props) => {
+    const queryParams = getQueryParams(props.location.search);
+    const category = queryParams.category;
 
-  render() {
-    let {
-      documents,
-      sortDirection
-    } = this.state;
+    if (documentCategories[category]) {
+      this.props.setCategoryFilter(category, true);
+    }
+  };
 
-    let onPreviousPdf = this.shouldShowPreviousButton() ? this.onPreviousPdf : null;
-    let onNextPdf = this.shouldShowNextButton() ? this.onNextPdf : null;
+  routedPdfListView = (props) => {
+    const { vacolsId } = props.match.params;
 
-    return (
-      <div className="section--document-list">
-        {this.state.currentPdfIndex === null && <PdfListView
-          annotationStorage={this.annotationStorage}
-          documents={documents}
-          changeSortState={this.changeSortState}
-          showPdf={this.showPdf}
-          showPdfAndJumpToPage={this.showPdfAndJumpToPage}
-          sortDirection={sortDirection}
-          numberOfDocuments={this.props.appealDocuments.length}
-          onFilter={this.onFilter}
-          filterBy={this.state.filterBy}
+    this.determineInitialCategoryFilter(props);
+
+    return <ReaderLoadingScreen
+      appealDocuments={this.props.appealDocuments}
+      annotations={this.props.annotations}
+      vacolsId={vacolsId}>
+        <PdfListView
+          showPdf={this.showPdf(props.history, vacolsId)}
           sortBy={this.state.sortBy}
           selectedLabels={this.state.selectedLabels}
-          selectLabel={this.onLabelSelected}
-          selectComments={this.selectComments}
           isCommentLabelSelected={this.state.isCommentLabelSelected}
-          onJumpToComment={this.onJumpToComment} />}
-        {this.state.currentPdfIndex !== null && <PdfViewer
-          annotationStorage={this.annotationStorage}
-          file={this.documentUrl(documents[this.state.currentPdfIndex])}
-          doc={documents[this.state.currentPdfIndex]}
-          onPreviousPdf={onPreviousPdf}
-          onNextPdf={onNextPdf}
-          onShowList={this.onShowList}
+          documentPathBase={`/${vacolsId}/documents`}
+          onJumpToComment={this.onJumpToComment(props.history, vacolsId)}
+          {...props}
+        />
+      </ReaderLoadingScreen>;
+  }
+
+  routedPdfViewer = (props) => {
+    const { vacolsId } = props.match.params;
+
+    return <ReaderLoadingScreen
+      appealDocuments={this.props.appealDocuments}
+      annotations={this.props.annotations}
+      vacolsId={vacolsId}>
+        <PdfViewer
+          allDocuments={_.values(this.props.storeDocuments)}
           pdfWorker={this.props.pdfWorker}
-          label={documents[this.state.currentPdfIndex].label}
-          onJumpToComment={this.onJumpToComment}
-          onCommentScrolledTo={this.onCommentScrolledTo} />}
-      </div>
-    );
+          showPdf={this.showPdf(props.history, vacolsId)}
+          onJumpToComment={this.onJumpToComment(props.history, vacolsId)}
+          documentPathBase={`/${vacolsId}/documents`}
+          {...props}
+        />
+      </ReaderLoadingScreen>
+    ;
+  }
+
+  routedCaseSelect = (props) => <CaseSelectLoadingScreen assignments={this.props.assignments}>
+      <CaseSelect history={props.history}
+          feedbackUrl={this.props.feedbackUrl}/>
+    </CaseSelectLoadingScreen>
+
+  render() {
+    const Router = this.props.router || BrowserRouter;
+
+    return <Router basename="/reader/appeal" {...this.props.routerTestProps}>
+        <div>
+          <NavigationBar
+            appName="Reader"
+            userDisplayName={this.props.userDisplayName}
+            dropdownUrls={this.props.dropdownUrls}
+            defaultUrl="/">
+            <div className="cf-wide-app section--document-list">
+              <PageRoute
+                exact
+                path="/"
+                title="Assignments | Caseflow Reader"
+                render={this.routedCaseSelect}/>
+              <PageRoute
+                exact
+                title="Claims Folder | Caseflow Reader"
+                breadcrumb="Claims Folder"
+                path="/:vacolsId/documents"
+                render={this.routedPdfListView}/>
+              <PageRoute
+                exact
+                title="Document Viewer | Caseflow Reader"
+                breadcrumb="Document Viewer"
+                path="/:vacolsId/documents/:docId"
+                render={this.routedPdfViewer}
+              />
+            </div>
+          </NavigationBar>
+          <Footer
+            appName="Reader"
+            feedbackUrl={this.props.feedbackUrl}
+            buildDate={this.props.buildDate}/>
+        </div>
+      </Router>;
   }
 }
 
 DecisionReviewer.propTypes = {
-  annotations: PropTypes.arrayOf(PropTypes.object),
-  appealDocuments: PropTypes.arrayOf(PropTypes.object).isRequired,
   pdfWorker: PropTypes.string,
+  userDisplayName: PropTypes.string,
+  dropdownUrls: PropTypes.array,
   onScrollToComment: PropTypes.func,
-  onCommentScrolledTo: PropTypes.func
+  onCommentScrolledTo: PropTypes.func,
+  handleSetLastRead: PropTypes.func.isRequired,
+  singleDocumentMode: PropTypes.bool,
+
+  // These two properties are exclusively for testing purposes
+  router: PropTypes.func,
+  routerProps: PropTypes.object
+};
+
+const mapStateToProps = (state) => {
+  return {
+    documentFilters: state.readerReducer.ui.pdfList.filters,
+    storeDocuments: state.readerReducer.documents,
+    pdf: state.readerReducer.ui.pdf
+  };
 };
 
 const mapDispatchToProps = (dispatch) => ({
-  onReceiveDocs(documents) {
-    dispatch({
-      type: Constants.RECEIVE_DOCUMENTS,
-      payload: documents
-    });
-  },
-  onScrollToComment(scrollToComment) {
-    dispatch({
-      type: Constants.SCROLL_TO_COMMENT,
-      payload: { scrollToComment }
-    });
-  }
+  ...bindActionCreators(ReaderActions, dispatch),
+  handleSelectCurrentPdf: (docId) => dispatch(ReaderActions.selectCurrentPdf(docId))
 });
 
-export default connect(null, mapDispatchToProps)(DecisionReviewer);
+export default connect(mapStateToProps, mapDispatchToProps)(DecisionReviewer);

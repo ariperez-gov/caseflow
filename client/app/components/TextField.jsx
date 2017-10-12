@@ -1,10 +1,14 @@
-import React, { PropTypes } from 'react';
+import React from 'react';
+import PropTypes from 'prop-types';
+
 export default class TextField extends React.Component {
+
   onChange = (event) => {
     this.props.onChange(event.target.value);
   }
 
   render() {
+
     let {
       errorMessage,
       className,
@@ -16,7 +20,11 @@ export default class TextField extends React.Component {
       value,
       validationError,
       invisible,
-      placeholder
+      placeholder,
+      title,
+      onKeyPress,
+      strongLabel,
+      maxLength
     } = this.props;
 
     let textInputClass = className.concat(
@@ -34,24 +42,38 @@ export default class TextField extends React.Component {
     //
     value = (value === null || typeof value === 'undefined') ? '' : value;
 
+    const labelContents = <span>{label || name} {required && <span className="cf-required">Required</span>}</span>;
+
     return <div className={textInputClass.join(' ')}>
-      <label className="question-label" htmlFor={name}>
-        {label || name} {required && <span className="cf-required">Required</span>}
-      </label>
+      {(label !== false) &&
+        <label className="question-label" htmlFor={name}>
+          {
+            strongLabel ?
+              <strong>{labelContents}</strong> :
+              labelContents
+          }
+        </label>
+      }
       {errorMessage && <span className="usa-input-error-message">{errorMessage}</span>}
       <input
         className={className}
         name={name}
         id={name}
         onChange={this.onChange}
+        onKeyPress={onKeyPress}
         type={type}
         value={value}
         readOnly={readOnly}
         placeholder={placeholder}
+        title={title}
+        maxLength={maxLength}
       />
-      <div className="cf-validation">
-        <span>{validationError}</span>
-      </div>
+
+      {(validationError) &&
+        <div className="cf-validation">
+          <span>{validationError}</span>
+        </div>
+      }
     </div>;
   }
 }
@@ -66,7 +88,10 @@ TextField.propTypes = {
   errorMessage: PropTypes.string,
   className: PropTypes.arrayOf(PropTypes.string),
   invisible: PropTypes.bool,
-  label: PropTypes.string,
+  label: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.bool
+  ]),
   name: PropTypes.string.isRequired,
   onChange(props) {
     if (!props.readOnly) {
@@ -80,5 +105,8 @@ TextField.propTypes = {
   required: PropTypes.bool.isRequired,
   type: PropTypes.string,
   validationError: PropTypes.string,
-  value: PropTypes.string
+  value: PropTypes.oneOfType([
+    PropTypes.string,
+    PropTypes.number
+  ])
 };

@@ -1,50 +1,66 @@
 class CertificationsController < ApplicationController
-  before_action :verify_access
-  before_action :set_application
+  before_action :verify_access, :check_certification_out_of_service
 
   def new
-    # NOTE: this isn't rails-restful. certification.start! saves
-    # the certification instance.
-    status = certification.start!
-    @form8 = certification.form8
-
-    if verify_certification_v2_access
-      render "v2", layout: "application"
-      return
-    end
-
-    case status
-    when :already_certified    then render "already_certified"
-    when :data_missing         then render "not_ready", status: 409
-    when :mismatched_documents then render "mismatched_documents"
-    end
+    certification.async_start!
+    react_routed
+    render "v2", layout: "application"
   end
 
-  def update_v2
+  def update_certification_from_v2_form
     permitted = params
                 .require("update")
                 .permit("representative_name",
                         "representative_type",
+                        "poa_matches",
+                        "poa_correct_in_vacols",
+                        "poa_correct_in_bgs",
                         "hearing_change_doc_found_in_vbms",
                         "form9_type",
-                        "hearing_preference")
+                        "hearing_preference",
+                        "certifying_official_name",
+                        "certifying_official_title"
+                       )
     certification.update!(permitted)
+  end
+
+  def update_v2
+    update_certification_from_v2_form
     render json: {}
   end
 
-  # TODO: update for certification v2- should we use hidden form params?
-  def create
-    # Can't use controller params in model mass assignments without whitelisting. See:
-    # http://edgeguides.rubyonrails.org/action_controller_overview.html#strong-parameters
-    params.require(:form8).permit!
-    form8.update_from_string_params(params[:form8])
-    form8.save_pdf!
+  def certify_v2
+    update_certification_from_v2_form
+    validate_data_presence_v2
 
-    redirect_to certification_path(id: certification.form8.vacols_id)
+    if %w(NO_HEARING_DESIRED NO_BOX_SELECTED HEARING_CANCELLED).include?(certification.hearing_preference)
+      hearing_requested = "No"
+    else
+      hearing_requested = "Yes"
+    end
+
+    form8.update_from_string_params(
+      representative_type: certification.rep_type,
+      representative_name: certification.rep_name,
+      hearing_preference: certification.hearing_preference,
+      # This field is necessary when on v2 certification but v1 form8
+      hearing_requested: hearing_requested,
+      certifying_official_name: certification.certifying_official_name,
+      certifying_official_title: certification.certifying_official_title
+    )
+    form8.save_pdf!
+    certification.complete!(current_user.id)
+    render json: {}
   end
 
   def show
-    render "confirm", layout: "application" if params[:confirm]
+    certification_data
+  end
+
+  def certification_data
+    return render json: { loading_data_failed: true } if certification.loading_data_failed
+    return render json: { loading_data: true } if certification.loading_data
+    render json: { certification: certification.to_hash, form9PdfPath: form9_pdfjs_path }
   end
 
   def form9_pdf
@@ -52,16 +68,12 @@ class CertificationsController < ApplicationController
     send_file(form9.serve, type: "application/pdf", disposition: "inline")
   end
 
-  def pdf
-    send_file(form8.pdf_location, type: "application/pdf", disposition: "inline")
+  def form9_pdfjs_path
+    pdfjs.full_path(file: form9_pdf_certification_path(id: certification.vacols_id))
   end
 
-  def confirm
-    @certification = Certification.find_by(vacols_id: vacols_id)
-
-    @certification.complete!(current_user.id)
-
-    redirect_to certification_path(id: appeal.vacols_id, confirm: true)
+  def pdf
+    send_file(form8.pdf_location, type: "application/pdf", disposition: "inline")
   end
 
   def set_application
@@ -70,6 +82,19 @@ class CertificationsController < ApplicationController
 
   private
 
+  def check_certification_out_of_service
+    render "out_of_service", layout: "application" if Rails.cache.read("certification_out_of_service")
+  end
+
+  # Make sure all data is there in case user skips steps and goes straight to sign_and_certify
+  def validate_data_presence_v2
+    fail Caseflow::Error::CertificationMissingData unless check_confirm_hearing_data
+  end
+
+  def check_confirm_hearing_data
+    certification.hearing_preference
+  end
+
   def certification_cancellation
     @certification_cancellation ||= CertificationCancellation.new(certification_id: certification.id)
   end
@@ -77,10 +102,6 @@ class CertificationsController < ApplicationController
 
   def verify_access
     verify_authorized_roles("Certify Appeal")
-  end
-
-  def verify_certification_v2_access
-    return true if current_user && current_user.can?("CertificationV2")
   end
 
   def certification

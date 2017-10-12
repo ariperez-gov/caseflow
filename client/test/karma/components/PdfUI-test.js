@@ -1,8 +1,11 @@
 import React from 'react';
 import { expect } from 'chai';
 import { shallow } from 'enzyme';
-import PdfUI from '../../../app/components/PdfUI';
 import sinon from 'sinon';
+
+import { PdfUI } from '../../../app/reader/PdfUI';
+
+const DOCUMENT_PATH_BASE = '/reader/appeal/reader_id1';
 
 /* eslint-disable no-unused-expressions */
 describe('PdfUI', () => {
@@ -13,7 +16,7 @@ describe('PdfUI', () => {
     beforeEach(() => {
       doc = {
         filename: 'My PDF',
-        id: 'myPdf',
+        id: 3,
         type: 'Form 8',
         receivedAt: '1/2/2017'
       };
@@ -21,8 +24,10 @@ describe('PdfUI', () => {
       wrapper = shallow(<PdfUI
         doc={doc}
         file="test.pdf"
+        filteredDocIds={[3]}
         id="pdf"
         pdfWorker="noworker"
+        documentPathBase={DOCUMENT_PATH_BASE}
       />);
     });
 
@@ -31,14 +36,18 @@ describe('PdfUI', () => {
         expect(wrapper.find('.cf-pdf-container')).to.have.length(1);
       });
 
-      it('renders the title', () => {
-        expect(wrapper.find('Button').find({ name: 'newTab' }).
+      it('renders the title as a link', () => {
+        expect(wrapper.find('Link').find({ name: 'newTab' }).
           children().
-          text()).to.eq(doc.type);
+          text()).to.eq(`${doc.type}<ExternalLink />`);
+        expect(wrapper.find('Link').find({ name: 'newTab' }).
+          first().
+          props().target).to.eq('_blank');
       });
 
-      it('renders the page number', () => {
-        expect(wrapper.text()).to.include('Page 1 of 1');
+      it('does not render the page number when pdf has not been rendered', () => {
+        expect(wrapper.text()).to.not.include('Page 1 of 1');
+        expect(wrapper.text()).to.include('Loading document');
       });
 
       it('renders the zoom buttons', () => {
@@ -46,33 +55,12 @@ describe('PdfUI', () => {
         expect(wrapper.find({ name: 'zoomIn' })).to.have.length(1);
       });
 
-      context('when onNextPdf function is supplied', () => {
-        it('renders the next PDF button', () => {
-          expect(wrapper.find({ name: 'next' })).to.have.length(0);
-          let onNextPdf = sinon.spy();
+      context('when showClaimsFolderNavigation is true', () => {
+        it('renders the back to claims folder button', () => {
+          expect(wrapper.find({ name: 'backToClaimsFolder' })).to.have.length(0);
 
-          wrapper.setProps({ onNextPdf });
-          expect(wrapper.find({ name: 'next' })).to.have.length(1);
-        });
-      });
-
-      context('when onPreviousPdf function is supplied', () => {
-        it('renders the previous PDF button', () => {
-          expect(wrapper.find({ name: 'previous' })).to.have.length(0);
-          let onPreviousPdf = sinon.spy();
-
-          wrapper.setProps({ onPreviousPdf });
-          expect(wrapper.find({ name: 'previous' })).to.have.length(1);
-        });
-      });
-
-      context('when onShowList function is supplied', () => {
-        it('renders the back to document list button', () => {
-          expect(wrapper.find({ name: 'backToDocuments' })).to.have.length(0);
-          let onShowList = sinon.spy();
-
-          wrapper.setProps({ onShowList });
-          expect(wrapper.find({ name: 'backToDocuments' })).to.have.length(1);
+          wrapper.setProps({ showClaimsFolderNavigation: true });
+          expect(wrapper.find({ name: 'backToClaimsFolder' })).to.have.length(1);
         });
       });
     });
@@ -80,19 +68,11 @@ describe('PdfUI', () => {
     context('.onPageChange', () => {
       it('updates the state', () => {
         let currentPage = 2;
-        let numPages = 4;
+        let fitToScreenZoom = 3;
 
-        wrapper.instance().onPageChange(currentPage, numPages);
+        wrapper.instance().onPageChange(currentPage, fitToScreenZoom);
         expect(wrapper.state('currentPage')).to.equal(currentPage);
-        expect(wrapper.state('numPages')).to.equal(numPages);
-      });
-
-      it('updates the UI with the new page location', () => {
-        let currentPage = 2;
-        let numPages = 4;
-
-        wrapper.instance().onPageChange(currentPage, numPages);
-        expect(wrapper.text()).to.include(`Page ${currentPage} of ${numPages}`);
+        expect(wrapper.state('fitToScreenZoom')).to.equal(fitToScreenZoom);
       });
     });
 
@@ -131,18 +111,19 @@ describe('PdfUI', () => {
         });
       });
 
-      context('document name', () => {
-        it('tries to open document in new tab', () => {
-          let url = `${window.location.href}/${doc.id}?type=${doc.type}` +
-            `&received_at=${doc.receivedAt}&filename=${doc.filename}`;
-          let open = sinon.spy(window, 'open');
+      context('backToClaimsFolder', () => {
+        it('calls the stopPlacingAnnotation props', () => {
+          const mockStopPlacingAnnotationClick = sinon.spy();
 
-          wrapper.find('Button').find({ name: 'newTab' }).
-            simulate('click');
-          expect(open.withArgs(url, '_blank').calledOnce).to.be.true;
+          wrapper.setProps({
+            showClaimsFolderNavigation: true,
+            stopPlacingAnnotation: mockStopPlacingAnnotationClick
+          });
+          wrapper.find({ name: 'backToClaimsFolder' }).simulate('click');
+
+          expect(mockStopPlacingAnnotationClick.calledOnce).to.be.true;
         });
       });
-
     });
   });
 });

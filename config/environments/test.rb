@@ -8,7 +8,7 @@ Rails.application.configure do
   # and recreated between test runs. Don't rely on the data there!
   config.cache_classes = true
 
-  cache_dir = Rails.root.join("tmp", "cache", "paralleltests#{ENV['TEST_ENV_NUMBER']}")
+  cache_dir = Rails.root.join("tmp", "cache", "test_#{ENV['TEST_SUBCATEGORY']}")
   FileUtils.mkdir_p(cache_dir) unless File.exists?(cache_dir)
   config.cache_store = :file_store, cache_dir
 
@@ -45,8 +45,8 @@ Rails.application.configure do
   # Setup S3
   config.s3_enabled = false
 
-  if ENV['TEST_ENV_NUMBER']
-    assets_cache_path = Rails.root.join("tmp/cache/assets/paralleltests#{ENV['TEST_ENV_NUMBER']}")
+  if ENV['TEST_SUBCATEGORY']
+    assets_cache_path = Rails.root.join("tmp/cache/assets/#{ENV['TEST_SUBCATEGORY']}")
     config.assets.configure do |env|
       env.cache = Sprockets::Cache::FileStore.new(assets_cache_path)
     end
@@ -59,6 +59,8 @@ Rails.application.configure do
 
   ENV["METRICS_USERNAME"] = "caseflow"
   ENV["METRICS_PASSWORD"] = "caseflow"
+  ENV["SIDEKIQ_USERNAME"] ||= "caseflow"
+  ENV["SIDEKIQ_PASSWORD"] ||= "caseflow"
 
   # For testing uncertification methods
   ENV["TEST_USER_ID"] = "TEST_USER_ID"
